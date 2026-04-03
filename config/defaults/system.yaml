@@ -2,8 +2,25 @@ storage:
   bucket: raw-assets
 review:
   threshold: 0.8
+  escalation_threshold: 0.7
 adapters:
   review_provider: antigravity
+  image_provider: local-image
+  tts_provider: local-tts
+  wan_provider: local-wan
+render:
+  default_output_preset: preview_720p24
+  allow_wan_for_dynamic: true
+audio:
+  narrator_voice_id: narrator.zh_default
+  subtitle_source_mode: tts_durations
+  default_speech_rate: 1.0
+agents:
+  enable_control_plane: true
+  allowed_agents:
+    - codex
+    - claude_code
+    - openclaw
+  max_parallel_proposals: 3
 runtime:
   state_backend: postgres
-

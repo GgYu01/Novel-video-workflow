@@ -12,7 +12,10 @@ from av_workflow.config.models import AppConfig
 class ConfigLoader:
     _runtime_override_allowlist = {
         "review.threshold",
+        "review.escalation_threshold",
         "adapters.review_provider",
+        "render.default_output_preset",
+        "audio.narrator_voice_id",
     }
 
     def __init__(self, config_root: str | Path) -> None:

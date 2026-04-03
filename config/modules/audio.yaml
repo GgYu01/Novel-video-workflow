@@ -1,0 +1,6 @@
+audio:
+  narrator_voice_id: narrator.zh_story_default
+  subtitle_source_mode: tts_segments
+  default_speech_rate: 1.0
+adapters:
+  tts_provider: kokoro-local

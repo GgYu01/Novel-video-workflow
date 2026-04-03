@@ -1,0 +1,5 @@
+render:
+  default_output_preset: preview_720p24
+  allow_wan_for_dynamic: true
+agents:
+  max_parallel_proposals: 4
