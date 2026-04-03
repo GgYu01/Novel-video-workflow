@@ -22,7 +22,7 @@ def build_audio_mix_manifest(
         ambience_refs=list(ambience_refs or []),
         duration_ms=duration_ms,
         mix_strategy={
-            "duck_bgm_under_dialogue": True,
+            "duck_bgm_under_dialogue": bgm_ref is not None,
             "normalize_dialogue_loudness": True,
             "normalize_final_mix": True,
         },

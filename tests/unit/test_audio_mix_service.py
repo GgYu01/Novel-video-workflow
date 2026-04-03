@@ -36,3 +36,19 @@ def test_build_audio_mix_manifest_tracks_narration_dialogue_and_bgm() -> None:
     assert mix_manifest.dialogue_refs[1] == "asset://audio/dialogue-antonio-001.wav"
     assert mix_manifest.duration_ms == 4300
     assert mix_manifest.mix_strategy["duck_bgm_under_dialogue"] is True
+
+
+def test_build_audio_mix_manifest_disables_ducking_without_bgm() -> None:
+    job = build_job()
+
+    mix_manifest = build_audio_mix_manifest(
+        job=job,
+        narration_refs=["asset://audio/narration-seg-001.wav"],
+        dialogue_refs=["asset://audio/dialogue-jose-001.wav"],
+        bgm_ref=None,
+        ambience_refs=[],
+        duration_ms=1800,
+    )
+
+    assert mix_manifest.mix_strategy["duck_bgm_under_dialogue"] is False
+    assert mix_manifest.bgm_ref is None
