@@ -10,6 +10,7 @@ def build_asset_manifest(
     rendered_shots: dict[str, dict[str, object]],
     subtitle_refs: list[str],
     audio_refs: list[str],
+    audio_mix_ref: str | None = None,
     preview_refs: list[str],
     cover_refs: list[str],
     final_video_ref: str,
@@ -39,6 +40,7 @@ def build_asset_manifest(
         shot_assets=shot_assets,
         subtitle_refs=subtitle_refs,
         audio_refs=audio_refs,
+        primary_audio_ref=audio_mix_ref or (audio_refs[0] if audio_refs else None),
         preview_refs=preview_refs,
         cover_refs=cover_refs,
         final_video_ref=final_video_ref,
@@ -47,6 +49,7 @@ def build_asset_manifest(
             "duration_sec": total_duration,
             "subtitle_count": len(subtitle_refs),
             "audio_count": len(audio_refs),
+            "primary_audio_ref": audio_mix_ref or (audio_refs[0] if audio_refs else None),
             "preview_count": len(preview_refs),
             "cover_count": len(cover_refs),
         },
@@ -70,3 +73,23 @@ def assemble_output_package(
         ready_for_delivery=False,
         version=manifest.version,
     )
+
+
+def build_ffmpeg_compose_plan(
+    *,
+    manifest: AssetManifest,
+    output_variant: str,
+    working_directory: str,
+) -> dict[str, object]:
+    concat_manifest_ref = f"{working_directory}/{manifest.job_id}-concat.txt"
+    concat_manifest_text = "\n".join(
+        f"file '{shot_asset['clip_ref']}'" for shot_asset in manifest.shot_assets
+    )
+
+    return {
+        "concat_manifest_ref": concat_manifest_ref,
+        "concat_manifest_text": concat_manifest_text,
+        "subtitle_package_refs": list(manifest.subtitle_refs),
+        "primary_audio_ref": manifest.primary_audio_ref,
+        "preview_variant_ref": f"asset://compose/{manifest.job_id}-{output_variant}.mp4",
+    }

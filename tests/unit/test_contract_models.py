@@ -15,6 +15,7 @@ from av_workflow.contracts.enums import (
 from av_workflow.contracts.models import (
     AssetManifest,
     CharacterBible,
+    AudioMixManifest,
     DialogueTimeline,
     Job,
     OutputPackage,
@@ -210,6 +211,24 @@ def test_output_package_requires_final_video_reference() -> None:
 
     assert package.version == 1
     assert package.ready_for_delivery is False
+
+
+def test_audio_mix_manifest_tracks_primary_mix_and_component_refs() -> None:
+    mix = AudioMixManifest(
+        audio_mix_manifest_id="mix-001",
+        job_id="job-001",
+        mix_ref="asset://audio/mix.wav",
+        narration_refs=["asset://audio/narrator.wav"],
+        dialogue_refs=["asset://audio/dialogue-1.wav", "asset://audio/dialogue-2.wav"],
+        bgm_ref="asset://audio/bgm.wav",
+        ambience_refs=["asset://audio/ambience.wav"],
+        duration_ms=4200,
+        mix_strategy={"ducking_enabled": True, "loudness_target_lufs": -16},
+    )
+
+    assert mix.mix_ref == "asset://audio/mix.wav"
+    assert mix.duration_ms == 4200
+    assert mix.mix_strategy["ducking_enabled"] is True
 
 
 def test_character_bible_tracks_visual_identity_and_voice_hints() -> None:

@@ -136,6 +136,19 @@ class DialogueTimeline(SnapshotModel):
     version: int = 1
 
 
+class AudioMixManifest(SnapshotModel):
+    audio_mix_manifest_id: str
+    job_id: str
+    mix_ref: str
+    narration_refs: list[str]
+    dialogue_refs: list[str]
+    bgm_ref: str | None = None
+    ambience_refs: list[str] = Field(default_factory=list)
+    duration_ms: int
+    mix_strategy: dict[str, Any] = Field(default_factory=dict)
+    version: int = 1
+
+
 class ShotRenderJob(SnapshotModel):
     render_job_id: str
     job_id: str
@@ -166,6 +179,7 @@ class AssetManifest(SnapshotModel):
     shot_assets: list[dict[str, Any]]
     subtitle_refs: list[str]
     audio_refs: list[str]
+    primary_audio_ref: str | None = None
     preview_refs: list[str]
     cover_refs: list[str]
     final_video_ref: str
