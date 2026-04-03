@@ -53,6 +53,7 @@ class RenderJobStatus(StrEnum):
 class ReviewMode(StrEnum):
     TECHNICAL = "technical"
     SEMANTIC_IMAGE = "semantic_image"
+    CONTINUITY = "continuity"
     POLICY = "policy"
 
 

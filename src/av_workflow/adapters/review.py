@@ -21,6 +21,18 @@ class _ProviderSemanticReviewPayload(BaseModel):
     latency_ms: int = 0
 
 
+class _ProviderContinuityReviewPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    result: ReviewResult
+    score: float = Field(ge=0.0, le=1.0)
+    reason_codes: list[str]
+    reason_text: str
+    recommended_action: str
+    fix_hint: str | None = None
+    latency_ms: int = 0
+
+
 def normalize_semantic_review(
     *,
     provider_name: str,
@@ -59,6 +71,58 @@ def normalize_semantic_review(
         target_type=target_type,
         target_ref=target_ref,
         review_mode=ReviewMode.SEMANTIC_IMAGE,
+        input_assets=input_assets,
+        evaluation_prompt_ref=evaluation_prompt_ref,
+        result=payload.result,
+        score=payload.score,
+        reason_codes=payload.reason_codes,
+        reason_text=payload.reason_text,
+        fix_hint=payload.fix_hint,
+        recommended_action=payload.recommended_action,
+        review_provider=provider_name,
+        provider_version=provider_version,
+        latency_ms=payload.latency_ms,
+        raw_response_ref=raw_response_ref,
+    )
+
+
+def normalize_continuity_review(
+    *,
+    provider_name: str,
+    provider_version: str,
+    target_ref: str,
+    input_assets: list[str],
+    response_payload: dict[str, Any],
+    raw_response_ref: str,
+    evaluation_prompt_ref: str = "prompt://review/continuity-default",
+) -> ReviewCase:
+    try:
+        payload = _ProviderContinuityReviewPayload.model_validate(response_payload)
+    except ValidationError:
+        return ReviewCase(
+            review_case_id=_build_review_case_id(f"continuity-{target_ref}"),
+            target_type="shot",
+            target_ref=target_ref,
+            review_mode=ReviewMode.CONTINUITY,
+            input_assets=input_assets,
+            evaluation_prompt_ref=evaluation_prompt_ref,
+            result=ReviewResult.FAIL,
+            score=0.0,
+            reason_codes=["provider_response_invalid"],
+            reason_text="Provider payload could not be normalized into a continuity review result.",
+            fix_hint="Inspect provider output and rerun continuity review.",
+            recommended_action="manual_hold",
+            review_provider=provider_name,
+            provider_version=provider_version,
+            latency_ms=_extract_latency(response_payload),
+            raw_response_ref=raw_response_ref,
+        )
+
+    return ReviewCase(
+        review_case_id=_build_review_case_id(f"continuity-{target_ref}"),
+        target_type="shot",
+        target_ref=target_ref,
+        review_mode=ReviewMode.CONTINUITY,
         input_assets=input_assets,
         evaluation_prompt_ref=evaluation_prompt_ref,
         result=payload.result,

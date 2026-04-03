@@ -119,3 +119,33 @@ def test_policy_engine_places_invalid_provider_reviews_on_manual_hold() -> None:
     assert decision.action is PolicyAction.MANUAL_HOLD
     assert decision.target_status is JobStatus.MANUAL_HOLD
     assert decision.resume_at is None
+
+
+def test_policy_engine_retries_shot_neighborhood_for_continuity_failures() -> None:
+    engine = PolicyEngine(semantic_threshold=0.9)
+    job = build_job(retry_count=0, max_auto_retries=2)
+    review = ReviewCase(
+        review_case_id="review-002",
+        target_type="shot",
+        target_ref="shot-002",
+        review_mode=ReviewMode.CONTINUITY,
+        input_assets=["asset://shots/shot-001/frame-001.png", "asset://shots/shot-002/frame-001.png"],
+        evaluation_prompt_ref="prompt://review/continuity-default",
+        result=ReviewResult.FAIL,
+        score=0.41,
+        reason_codes=["character_drift", "scene_drift"],
+        reason_text="Adjacent shots drift in both subject appearance and stadium context.",
+        fix_hint="Retry the shot neighborhood and consider downgrading to limited_motion.",
+        recommended_action="retry_neighborhood",
+        review_provider="review-mm",
+        provider_version="preview",
+        latency_ms=902,
+        raw_response_ref="raw://review-002.json",
+    )
+
+    decision = engine.evaluate_review(job, review)
+
+    assert decision.action is PolicyAction.RETRY
+    assert decision.scope == "shot_neighborhood"
+    assert decision.target_status is JobStatus.RETRY_SCHEDULED
+    assert decision.resume_at is JobStatus.PLANNED

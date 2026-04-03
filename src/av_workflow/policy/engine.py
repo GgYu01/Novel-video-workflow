@@ -5,6 +5,7 @@ from av_workflow.contracts.models import Job, PolicyDecision, ReviewCase
 
 _RETRY_ACTIONS: dict[str, tuple[str, JobStatus]] = {
     "retry_shot": ("shot", JobStatus.PLANNED),
+    "retry_neighborhood": ("shot_neighborhood", JobStatus.PLANNED),
     "retry_scene": ("scene", JobStatus.PLANNED),
     "retry_chapter": ("chapter", JobStatus.PLANNED),
     "retry_compose": ("compose", JobStatus.RENDER_READY),

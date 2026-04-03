@@ -30,6 +30,13 @@ def evaluate_asset_manifest(
         if manifest.audio_refs and not list(final_video_metadata.get("audio_streams", [])):
             reason_codes.append("missing_audio_stream")
 
+    if manifest.primary_audio_ref is not None:
+        primary_audio_metadata = media_metadata.get(manifest.primary_audio_ref)
+        if primary_audio_metadata is None:
+            reason_codes.append("missing_primary_audio_metadata")
+        elif not list(primary_audio_metadata.get("audio_streams", [])):
+            reason_codes.append("missing_primary_audio_stream")
+
     if not manifest.subtitle_refs:
         reason_codes.append("missing_subtitles")
 

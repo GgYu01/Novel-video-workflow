@@ -65,7 +65,11 @@ def test_evaluate_asset_manifest_passes_for_complete_media_metadata() -> None:
                 "duration_sec": 4.0,
                 "video_streams": [{"width": 1920, "height": 1080}],
                 "audio_streams": [{"sample_rate": 48000}],
-            }
+            },
+            "asset://audio/narration.wav": {
+                "duration_sec": 4.0,
+                "audio_streams": [{"sample_rate": 48000}],
+            },
         },
         subtitle_reports={
             "asset://subtitles/final.srt": {
@@ -92,7 +96,11 @@ def test_evaluate_asset_manifest_fails_when_video_stream_is_missing() -> None:
                 "duration_sec": 4.0,
                 "video_streams": [],
                 "audio_streams": [{"sample_rate": 48000}],
-            }
+            },
+            "asset://audio/narration.wav": {
+                "duration_sec": 4.0,
+                "audio_streams": [{"sample_rate": 48000}],
+            },
         },
         subtitle_reports={
             "asset://subtitles/final.srt": {
@@ -119,7 +127,11 @@ def test_evaluate_asset_manifest_fails_when_subtitle_line_is_too_long() -> None:
                 "duration_sec": 4.0,
                 "video_streams": [{"width": 1920, "height": 1080}],
                 "audio_streams": [{"sample_rate": 48000}],
-            }
+            },
+            "asset://audio/narration.wav": {
+                "duration_sec": 4.0,
+                "audio_streams": [{"sample_rate": 48000}],
+            },
         },
         subtitle_reports={
             "asset://subtitles/final.srt": {
@@ -131,3 +143,29 @@ def test_evaluate_asset_manifest_fails_when_subtitle_line_is_too_long() -> None:
 
     assert review.result is ReviewResult.FAIL
     assert "subtitle_line_too_long" in review.reason_codes
+
+
+def test_evaluate_asset_manifest_fails_when_primary_audio_metadata_is_missing() -> None:
+    job = build_job()
+    manifest = build_manifest()
+
+    review = evaluate_asset_manifest(
+        job=job,
+        manifest=manifest,
+        media_metadata={
+            "asset://video/final.mp4": {
+                "duration_sec": 4.0,
+                "video_streams": [{"width": 1920, "height": 1080}],
+                "audio_streams": [{"sample_rate": 48000}],
+            }
+        },
+        subtitle_reports={
+            "asset://subtitles/final.srt": {
+                "cue_count": 3,
+                "max_line_length": 24,
+            }
+        },
+    )
+
+    assert review.result is ReviewResult.FAIL
+    assert "missing_primary_audio_metadata" in review.reason_codes
