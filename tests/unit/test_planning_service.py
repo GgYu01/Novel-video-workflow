@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from av_workflow.contracts.enums import ShotType
-from av_workflow.contracts.models import SourceDocument
+from av_workflow.contracts.enums import MotionTier, ShotType
+from av_workflow.contracts.models import ShotPlanSet, SourceDocument
 from av_workflow.services.planning import DeterministicPlanningService
 
 
@@ -20,9 +20,9 @@ class StubShotPlanner:
                 "duration_target": 4.0,
                 "shot_type": ShotType.MEDIUM,
                 "camera_instruction": "steady eye-level framing",
-                "subject_instruction": "traveler steps off the train",
-                "environment_instruction": "foggy station platform",
-                "narration_text": "Dawn rolled across the tracks.",
+                "subject_instruction": "crowd throws the coach into the air in celebration",
+                "environment_instruction": "Saint Moix Stadium packed with cheering supporters",
+                "narration_text": "The celebration exploded across the stadium.",
                 "dialogue_lines": [],
                 "subtitle_source": "narration",
                 "render_requirements": {"aspect_ratio": "16:9"},
@@ -39,12 +39,19 @@ def build_source_document() -> SourceDocument:
         source_ref="asset://source.txt",
         title="Arrival",
         language="zh-CN",
-        normalized_text="Chapter 1: Arrival\nThe train arrived at dawn.",
+        normalized_text=(
+            "Chapter 1: Arrival at Saint Moix Stadium\n"
+            "Jose Alemany watched Antonio Asensio celebrate at Saint Moix Stadium.\n"
+            "Jose Alemany promised Mateo Alemany he would rebuild Mallorca."
+        ),
         chapter_documents=[
             {
                 "chapter_id": "ch-1",
-                "title": "Chapter 1: Arrival",
-                "content": "The train arrived at dawn.",
+                "title": "Chapter 1: Arrival at Saint Moix Stadium",
+                "content": (
+                    "Jose Alemany watched Antonio Asensio celebrate at Saint Moix Stadium. "
+                    "Jose Alemany promised Mateo Alemany he would rebuild Mallorca."
+                ),
             }
         ],
     )
@@ -60,6 +67,14 @@ def test_planning_service_builds_story_spec_from_source_document() -> None:
     assert story_spec.approved_for_planning is True
     assert story_spec.spec_validation_result == "validated"
     assert story_spec.chapter_specs[0]["chapter_id"] == "ch-1"
+    assert any(
+        character["canonical_name"] == "Jose Alemany"
+        for character in story_spec.character_registry
+    )
+    assert any(
+        location["location_name"] == "Saint Moix Stadium"
+        for location in story_spec.location_registry
+    )
 
 
 def test_planning_service_generates_shot_plans_via_injected_planner() -> None:
@@ -72,4 +87,23 @@ def test_planning_service_generates_shot_plans_via_injected_planner() -> None:
 
     assert len(shot_plans) == 1
     assert shot_plans[0].shot_type is ShotType.MEDIUM
+    assert shot_plans[0].motion_tier is MotionTier.WAN_DYNAMIC
     assert planner.calls == [(source, story_spec.story_id)]
+
+
+def test_planning_service_groups_shots_into_shot_plan_set() -> None:
+    planner = StubShotPlanner()
+    service = DeterministicPlanningService(shot_planner=planner)
+    source = build_source_document()
+    story_spec = service.build_story_spec(source)
+
+    shot_plan_set = service.generate_shot_plan_set(
+        source_document=source,
+        story_spec=story_spec,
+        output_preset="preview_720p24",
+    )
+
+    assert isinstance(shot_plan_set, ShotPlanSet)
+    assert shot_plan_set.chapter_id == "ch-1"
+    assert shot_plan_set.default_output_preset == "preview_720p24"
+    assert shot_plan_set.shots[0].motion_tier is MotionTier.WAN_DYNAMIC

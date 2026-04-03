@@ -97,6 +97,7 @@ class ShotPlan(SnapshotModel):
     scene_id: str
     duration_target: float
     shot_type: ShotType
+    motion_tier: MotionTier = MotionTier.LIMITED_MOTION
     camera_instruction: str
     subject_instruction: str
     environment_instruction: str
