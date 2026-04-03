@@ -8,6 +8,7 @@ LINEAR_FLOW_STATUSES: tuple[JobStatus, ...] = (
     JobStatus.PLANNED,
     JobStatus.RENDER_REQUESTED,
     JobStatus.RENDER_READY,
+    JobStatus.AUDIO_READY,
     JobStatus.COMPOSED,
     JobStatus.QA_TECHNICAL_PASSED,
     JobStatus.QA_SEMANTIC_PASSED,
@@ -43,6 +44,7 @@ RETRY_RESUME_TARGETS: frozenset[JobStatus] = frozenset(
         JobStatus.PLANNED,
         JobStatus.RENDER_REQUESTED,
         JobStatus.RENDER_READY,
+        JobStatus.AUDIO_READY,
         JobStatus.COMPOSED,
         JobStatus.QA_TECHNICAL_PASSED,
     }

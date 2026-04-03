@@ -13,6 +13,7 @@ class JobStatus(StrEnum):
     PLANNED = "planned"
     RENDER_REQUESTED = "render_requested"
     RENDER_READY = "render_ready"
+    AUDIO_READY = "audio_ready"
     COMPOSED = "composed"
     QA_TECHNICAL_PASSED = "qa_technical_passed"
     QA_SEMANTIC_PASSED = "qa_semantic_passed"

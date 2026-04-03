@@ -36,6 +36,7 @@ def test_workflow_engine_advances_job_through_happy_path() -> None:
         JobStatus.PLANNED,
         JobStatus.RENDER_REQUESTED,
         JobStatus.RENDER_READY,
+        JobStatus.AUDIO_READY,
         JobStatus.COMPOSED,
         JobStatus.QA_TECHNICAL_PASSED,
         JobStatus.QA_SEMANTIC_PASSED,
