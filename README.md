@@ -83,6 +83,12 @@ REMOTE_PASSWORD=*** DRY_RUN=0 ./scripts/install_remote_module.sh
 
 The compose stack in [docker-compose.yml](/workspaces/auto_video_gen/docker-compose.yml) now doubles as the local development baseline and the future `infra-core` module compose file.
 
+The service is currently attached to the internal Docker and Traefik networks with `expose`, not host-level `ports`. Validate runtime health through the ingress host or with:
+
+```bash
+docker exec av-workflow-av-api-1 python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).read().decode())"
+```
+
 If the target host needs a different cached or mirrored Python base image, override:
 
 ```bash

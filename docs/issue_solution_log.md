@@ -51,3 +51,9 @@ Use this file to record recurring failures, root cause evidence, fixes, and regr
 - Root cause: the stage runner constructor and its transition helpers were too tightly coupled to the end-to-end runtime path.
 - Fix: default the workflow engine in `DeterministicStageRunner`, keep explicit state-transition helpers for unit tests, and require planning/audio/render services only when `run()` is invoked.
 - Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_workflow_transitions.py tests/unit/test_stage_runner.py -v` and confirm the state machine remains green.
+
+### Remote host curl to `127.0.0.1:8080` failed even though the container was healthy
+- Symptom: after `scripts/modulectl.sh up av-workflow` reported success, `curl http://127.0.0.1:8080/health` on the remote host returned connection refused.
+- Root cause: the compose service uses `expose` only and joins the internal Docker and Traefik networks, so the API is reachable from the container network and ingress path but is not published as a host port.
+- Fix: verify health with the container healthcheck, `docker exec`, or the ingress hostname instead of assuming host-loopback access.
+- Regression check: inspect `docker inspect ...State.Health`, run `docker exec av-workflow-av-api-1 ... http://127.0.0.1:8080/health`, and confirm the container stays `healthy`.
