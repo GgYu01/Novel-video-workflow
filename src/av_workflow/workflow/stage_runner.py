@@ -102,6 +102,7 @@ class DeterministicStageRunner:
             source_document=source_document,
             story_spec=story_spec,
         )
+        render_requested_job = self.request_render(planned_job)
 
         render_results: dict[str, ShotRenderResult] = {}
         rendered_shots: dict[str, dict[str, object]] = {}
@@ -112,7 +113,7 @@ class DeterministicStageRunner:
 
         for shot_plan in shot_plan_set.shots:
             render_request = self.render_job_service.build_render_request(
-                job_id=planned_job.job_id,
+                job_id=render_requested_job.job_id,
                 shot_plan=shot_plan,
             )
             render_result = self.render_job_service.submit_render_request(render_request)
@@ -138,14 +139,13 @@ class DeterministicStageRunner:
                     dialogue_refs.append(str(audio_ref))
 
         audio_mix_manifest = build_audio_mix_manifest(
-            job=planned_job,
+            job=render_requested_job,
             narration_refs=narration_refs,
             dialogue_refs=dialogue_refs,
             duration_ms=total_duration_ms,
             bgm_ref=None,
             ambience_refs=[],
         )
-        render_requested_job = self.request_render(planned_job)
         render_ready_job = self.mark_render_ready(render_requested_job)
         audio_ready_job = self.mark_audio_ready(render_ready_job)
         asset_manifest = build_asset_manifest(

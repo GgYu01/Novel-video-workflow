@@ -3,13 +3,10 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from av_workflow.api.app import create_app
-from av_workflow.api.routes import InMemoryApiStore
-from av_workflow.contracts.enums import JobStatus
 
 
 def test_hybrid_job_flow_exposes_stage_and_shot_artifacts() -> None:
-    store = InMemoryApiStore()
-    client = TestClient(create_app(store=store))
+    client = TestClient(create_app())
 
     created = client.post(
         "/v1/jobs",
@@ -24,25 +21,39 @@ def test_hybrid_job_flow_exposes_stage_and_shot_artifacts() -> None:
     )
     job_id = created.json()["job_id"]
 
-    store.update_job_stage(job_id, JobStatus.AUDIO_READY, "audio_ready")
-    store.record_artifacts(
-        job_id,
-        subtitle_refs=["asset://subtitles/final.srt"],
-        audio_refs=[
-            "asset://audio/narration.wav",
-            "asset://audio/dialogue.wav",
-        ],
-        primary_audio_ref="asset://audio/final-mix.wav",
-        preview_refs=["asset://preview/final.png"],
-        cover_refs=["asset://cover/final.png"],
-        final_video_ref="asset://video/final.mp4",
+    stage_updated = client.patch(
+        f"/v1/jobs/{job_id}/stage",
+        json={
+            "status": "audio_ready",
+            "current_stage": "audio_ready",
+        },
     )
-    store.record_shot_artifacts(
-        job_id,
-        shot_id="shot-001",
-        clip_ref="asset://shots/shot-001.mp4",
-        frame_refs=["asset://shots/shot-001/frame-001.png"],
+    assert stage_updated.status_code == 200
+
+    artifacts_updated = client.patch(
+        f"/v1/jobs/{job_id}/artifacts",
+        json={
+            "subtitle_refs": ["asset://subtitles/final.srt"],
+            "audio_refs": [
+                "asset://audio/narration.wav",
+                "asset://audio/dialogue.wav",
+            ],
+            "primary_audio_ref": "asset://audio/final-mix.wav",
+            "preview_refs": ["asset://preview/final.png"],
+            "cover_refs": ["asset://cover/final.png"],
+            "final_video_ref": "asset://video/final.mp4",
+        },
     )
+    assert artifacts_updated.status_code == 200
+
+    shot_updated = client.patch(
+        f"/v1/jobs/{job_id}/shots/shot-001/artifacts",
+        json={
+            "clip_ref": "asset://shots/shot-001.mp4",
+            "frame_refs": ["asset://shots/shot-001/frame-001.png"],
+        },
+    )
+    assert shot_updated.status_code == 200
 
     stage = client.get(f"/v1/jobs/{job_id}/stage")
     assert stage.status_code == 200
@@ -68,4 +79,3 @@ def test_hybrid_job_flow_exposes_stage_and_shot_artifacts() -> None:
         "clip_ref": "asset://shots/shot-001.mp4",
         "frame_refs": ["asset://shots/shot-001/frame-001.png"],
     }
-

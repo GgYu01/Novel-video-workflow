@@ -39,6 +39,13 @@ class StageSummary(BaseModel):
     max_auto_retries: int
 
 
+class StageUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: JobStatus
+    current_stage: str | None = None
+
+
 class ArtifactSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -52,11 +59,29 @@ class ArtifactSummary(BaseModel):
     shot_assets: list["ShotArtifactSummary"] = Field(default_factory=list)
 
 
+class ArtifactUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subtitle_refs: list[str] | None = None
+    audio_refs: list[str] | None = None
+    primary_audio_ref: str | None = None
+    preview_refs: list[str] | None = None
+    cover_refs: list[str] | None = None
+    final_video_ref: str | None = None
+
+
 class ShotArtifactSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     job_id: str
     shot_id: str
+    clip_ref: str
+    frame_refs: list[str] = Field(default_factory=list)
+
+
+class ShotArtifactUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     clip_ref: str
     frame_refs: list[str] = Field(default_factory=list)
 
@@ -200,12 +225,42 @@ def build_router(*, store: InMemoryApiStore) -> APIRouter:
             max_auto_retries=job.max_auto_retries,
         )
 
+    @router.patch("/jobs/{job_id}/stage", response_model=StageSummary)
+    def update_stage(job_id: str, request: StageUpdateRequest) -> StageSummary:
+        current_stage = request.current_stage or request.status.value
+        try:
+            job = store.update_job_stage(job_id, request.status, current_stage)
+        except KeyError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job_not_found") from exc
+        return StageSummary(
+            job_id=job.job_id,
+            status=job.status.value,
+            current_stage=job.current_stage,
+            retry_count=job.retry_count,
+            max_auto_retries=job.max_auto_retries,
+        )
+
     @router.get("/jobs/{job_id}/artifacts", response_model=ArtifactSummary)
     def get_artifacts(job_id: str) -> ArtifactSummary:
         artifacts = store.get_artifacts(job_id)
         if artifacts is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job_not_found")
         return artifacts
+
+    @router.patch("/jobs/{job_id}/artifacts", response_model=ArtifactSummary)
+    def update_artifacts(job_id: str, request: ArtifactUpdateRequest) -> ArtifactSummary:
+        try:
+            return store.record_artifacts(
+                job_id,
+                subtitle_refs=request.subtitle_refs,
+                audio_refs=request.audio_refs,
+                primary_audio_ref=request.primary_audio_ref,
+                preview_refs=request.preview_refs,
+                cover_refs=request.cover_refs,
+                final_video_ref=request.final_video_ref,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job_not_found") from exc
 
     @router.get("/jobs/{job_id}/shots/{shot_id}/artifacts", response_model=ShotArtifactSummary)
     def get_shot_artifacts(job_id: str, shot_id: str) -> ShotArtifactSummary:
@@ -214,4 +269,23 @@ def build_router(*, store: InMemoryApiStore) -> APIRouter:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job_not_found")
         return shot_artifacts
 
+    @router.patch("/jobs/{job_id}/shots/{shot_id}/artifacts", response_model=ShotArtifactSummary)
+    def update_shot_artifacts(
+        job_id: str,
+        shot_id: str,
+        request: ShotArtifactUpdateRequest,
+    ) -> ShotArtifactSummary:
+        try:
+            return store.record_shot_artifacts(
+                job_id,
+                shot_id=shot_id,
+                clip_ref=request.clip_ref,
+                frame_refs=request.frame_refs,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job_not_found") from exc
+
     return router
+
+
+ArtifactSummary.model_rebuild()
