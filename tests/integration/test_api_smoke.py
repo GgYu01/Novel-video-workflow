@@ -33,12 +33,19 @@ def test_api_smoke_job_lifecycle_and_artifact_summary() -> None:
     assert fetched.status_code == 200
     assert fetched.json()["job_id"] == job_id
 
+    stage = client.get(f"/v1/jobs/{job_id}/stage")
+    assert stage.status_code == 200
+    assert stage.json()["current_stage"] == "created"
+
     artifacts = client.get(f"/v1/jobs/{job_id}/artifacts")
     assert artifacts.status_code == 200
     assert artifacts.json() == {
         "job_id": job_id,
         "final_video_ref": None,
+        "audio_refs": [],
+        "primary_audio_ref": None,
         "subtitle_refs": [],
         "preview_refs": [],
         "cover_refs": [],
+        "shot_assets": [],
     }
