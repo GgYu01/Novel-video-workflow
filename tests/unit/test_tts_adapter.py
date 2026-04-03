@@ -24,12 +24,13 @@ def test_normalize_tts_result_uses_synthesis_duration_as_timeline_source() -> No
             "request_id": "tts-001",
             "status": "completed",
             "audio_ref": "asset://audio/tts-001.wav",
+            "audio_path": "/tmp/runtime/jobs/job-001/audio/tts-001.wav",
             "duration_ms": 1870,
             "speaker_role": "character-jose",
         }
     )
 
     assert result.audio_ref == "asset://audio/tts-001.wav"
+    assert result.audio_path == "/tmp/runtime/jobs/job-001/audio/tts-001.wav"
     assert result.duration_ms == 1870
     assert result.status == "completed"
-

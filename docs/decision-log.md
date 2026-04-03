@@ -71,3 +71,15 @@ Use this file for dated architectural and operational decisions that should rema
 ### D-017: Expose workflow stage and artifact mutation through HTTP, not direct store mutation
 - Decision: keep `InMemoryApiStore` as an internal persistence stub and expose `PATCH /v1/jobs/{job_id}/stage`, `PATCH /v1/jobs/{job_id}/artifacts`, and `PATCH /v1/jobs/{job_id}/shots/{shot_id}/artifacts` as the operator control surface.
 - Why: external automation agents, smoke tests, and future deployment modules should all exercise the same schema-validated contract instead of mutating in-memory state directly.
+
+### D-018: Keep `DeterministicStageRunner` as the control-plane baseline and move real file output into a separate execution service
+- Decision: preserve `DeterministicStageRunner` as the in-memory orchestration baseline for workflow-state progression, and implement file-backed runtime output in `DeterministicLocalJobExecutionService` instead of folding execution side effects into the stage runner.
+- Why: the control plane and the executable runtime have different failure modes and different test shapes. Keeping them separate prevents runtime filesystem and ffmpeg concerns from polluting the core workflow-state contract.
+
+### D-019: Use `asset://runtime/jobs/...` as the canonical runtime artifact namespace
+- Decision: all deterministic local provider outputs and execution-slice artifacts should resolve to runtime-scoped refs such as `asset://runtime/jobs/<job_id>/shots/...` and `asset://runtime/jobs/<job_id>/output/final.mp4`.
+- Why: host-specific `file://` paths are hard to preserve across API boundaries and remote execution environments. Runtime-scoped asset refs keep artifacts traceable without leaking machine-local absolute paths into workflow contracts.
+
+### D-020: Package `ffmpeg` inside the API image instead of assuming host binaries
+- Decision: install `ffmpeg` in `build/Dockerfile.api` and treat the container image as the executable runtime boundary for compose/video stitching.
+- Why: both the development container and the target host may differ in host-level media tooling. Packaging `ffmpeg` in the module image removes a hidden host dependency and keeps the execution contract reproducible.

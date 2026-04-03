@@ -4,6 +4,18 @@ from av_workflow.contracts.models import ShotPlan, SourceDocument, StorySpec, Vo
 from av_workflow.services.audio_timeline import DeterministicAudioTimelineService
 
 
+class StubTTSAdapter:
+    def submit(self, request):  # type: ignore[no-untyped-def]
+        return {
+            "request_id": request.request_id,
+            "status": "completed",
+            "audio_ref": f"asset://audio/{request.request_id}.wav",
+            "audio_path": f"/tmp/runtime/jobs/job-001/audio/{request.request_id}.wav",
+            "duration_ms": 1200,
+            "speaker_role": request.speaker_role,
+        }
+
+
 def build_story_spec() -> StorySpec:
     return StorySpec(
         story_id="story-001",
@@ -98,3 +110,29 @@ def test_audio_timeline_service_skips_empty_narration_segments() -> None:
 
     assert len(timeline.segments) == 2
     assert timeline.segments[0]["speaker"] == "character-jose"
+
+
+def test_audio_timeline_service_includes_local_audio_path_when_adapter_provides_it() -> None:
+    service = DeterministicAudioTimelineService(tts_adapter=StubTTSAdapter())
+    source = SourceDocument(
+        source_document_id="source-001",
+        job_id="job-001",
+        source_ref="asset://source.txt",
+        title="Mallorca",
+        language="zh-CN",
+        normalized_text="Chapter 1: Arrival",
+        chapter_documents=[
+            {"chapter_id": "ch-1", "title": "Chapter 1: Arrival", "content": "Jose speaks with Antonio."}
+        ],
+    )
+    story_spec = build_story_spec()
+    shot_plan = build_shot_plan()
+
+    voice_cast = service.build_voice_cast(source_document=source, story_spec=story_spec)
+    timeline = service.build_timeline(
+        shot_plan=shot_plan,
+        voice_cast=voice_cast,
+    )
+
+    assert timeline.segments[0]["audio_ref"].startswith("asset://audio/")
+    assert str(timeline.segments[0]["audio_path"]).endswith(".wav")

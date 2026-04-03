@@ -68,4 +68,4 @@ def test_build_ffmpeg_compose_plan_tracks_concat_and_preview_outputs() -> None:
     assert "asset://shots/shot-001.mp4" in plan["concat_manifest_text"]
     assert "asset://shots/shot-002.mp4" in plan["concat_manifest_text"]
     assert plan["primary_audio_ref"] == "asset://audio/final-mix.wav"
-    assert plan["preview_variant_ref"] == "asset://compose/job-001-preview_720p24.mp4"
+    assert plan["preview_variant_ref"] == "asset://runtime/jobs/job-001/compose/preview_720p24.mp4"

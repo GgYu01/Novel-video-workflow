@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
 from av_workflow.contracts.models import AssetManifest, Job, OutputPackage, ShotPlan
+from av_workflow.runtime.ffmpeg import FfmpegExecutor
+from av_workflow.runtime.workspace import RuntimeWorkspace
 
 
 def build_asset_manifest(
@@ -85,11 +90,75 @@ def build_ffmpeg_compose_plan(
     concat_manifest_text = "\n".join(
         f"file '{shot_asset['clip_ref']}'" for shot_asset in manifest.shot_assets
     )
+    preview_variant_ref = f"asset://runtime/jobs/{manifest.job_id}/compose/{output_variant}.mp4"
 
     return {
         "concat_manifest_ref": concat_manifest_ref,
         "concat_manifest_text": concat_manifest_text,
         "subtitle_package_refs": list(manifest.subtitle_refs),
         "primary_audio_ref": manifest.primary_audio_ref,
-        "preview_variant_ref": f"asset://compose/{manifest.job_id}-{output_variant}.mp4",
+        "preview_variant_ref": preview_variant_ref,
+    }
+
+
+def execute_ffmpeg_compose(
+    *,
+    manifest: AssetManifest,
+    workspace: RuntimeWorkspace,
+    ffmpeg_executor: FfmpegExecutor,
+    shot_clip_paths: list[Path],
+    primary_audio_path: Path | None = None,
+    output_variant: str = "preview_720p24",
+) -> dict[str, object]:
+    if len(shot_clip_paths) != len(manifest.shot_assets):
+        raise ValueError("Shot clip paths must match the manifest shot count")
+
+    workspace.ensure_job_tree(manifest.job_id)
+    concat_manifest_path = workspace.compose_dir(manifest.job_id) / f"{manifest.job_id}-concat.txt"
+    concat_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    concat_manifest_text = "\n".join(f"file '{path}'" for path in shot_clip_paths) + "\n"
+    concat_manifest_path.write_text(concat_manifest_text, encoding="utf-8")
+
+    final_video_path = workspace.output_dir(manifest.job_id) / "final.mp4"
+    final_video_path.parent.mkdir(parents=True, exist_ok=True)
+
+    ffmpeg_args = [
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_manifest_path),
+    ]
+    if primary_audio_path is not None:
+        ffmpeg_args.extend(
+            [
+                "-i",
+                str(primary_audio_path),
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
+                "-shortest",
+            ]
+        )
+    else:
+        ffmpeg_args.extend(["-c:v", "libx264", "-pix_fmt", "yuv420p"])
+    ffmpeg_args.append(str(final_video_path))
+
+    ffmpeg_executor.run(ffmpeg_args, cwd=workspace.root_dir, output_path=final_video_path)
+
+    preview_variant_path = workspace.compose_dir(manifest.job_id) / f"{output_variant}.mp4"
+    if preview_variant_path != final_video_path:
+        shutil.copyfile(final_video_path, preview_variant_path)
+
+    return {
+        "concat_manifest_path": concat_manifest_path,
+        "concat_manifest_text": concat_manifest_text,
+        "final_video_path": final_video_path,
+        "final_video_ref": manifest.final_video_ref,
+        "preview_variant_path": preview_variant_path,
+        "preview_variant_ref": f"asset://runtime/jobs/{manifest.job_id}/compose/{output_variant}.mp4",
+        "primary_audio_path": primary_audio_path,
     }

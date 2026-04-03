@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import re
 
-from av_workflow.adapters.tts import TTSRequest, build_tts_request, normalize_tts_result
+from av_workflow.adapters.tts import TTSAdapter, TTSRequest, build_tts_request, normalize_tts_result
 from av_workflow.contracts.models import DialogueTimeline, ShotPlan, SourceDocument, StorySpec, VoiceCast
 
 
 class DeterministicAudioTimelineService:
+    def __init__(self, *, tts_adapter: TTSAdapter | None = None) -> None:
+        self.tts_adapter = tts_adapter
+
     def build_voice_cast(
         self,
         *,
@@ -73,6 +76,11 @@ class DeterministicAudioTimelineService:
         )
 
     def _synthesize(self, request: TTSRequest, *, speaker_role: str):
+        if self.tts_adapter is not None:
+            payload = self.tts_adapter.submit(request)
+            payload.setdefault("speaker_role", speaker_role)
+            return normalize_tts_result(payload)
+
         duration_ms = max(600, int(len(request.text) * 55 / max(request.speech_rate, 0.5)))
         payload = {
             "request_id": request.request_id,
@@ -84,7 +92,7 @@ class DeterministicAudioTimelineService:
         return normalize_tts_result(payload)
 
     def _build_segment(self, speaker: str, text: str, start_ms: int, result) -> dict[str, object]:
-        return {
+        segment: dict[str, object] = {
             "segment_id": result.request_id,
             "speaker": speaker,
             "text": text,
@@ -92,6 +100,9 @@ class DeterministicAudioTimelineService:
             "end_ms": start_ms + result.duration_ms,
             "audio_ref": result.audio_ref,
         }
+        if result.audio_path:
+            segment["audio_path"] = result.audio_path
+        return segment
 
     def _resolve_voice_id(self, voice_cast: VoiceCast, speaker_role: str) -> str:
         return voice_cast.character_voice_map.get(speaker_role, voice_cast.narrator_voice_id)

@@ -47,6 +47,7 @@ def test_api_image_runtime_uses_layered_host_and_port_defaults() -> None:
 
     assert "AV_WORKFLOW_API_HOST" in dockerfile
     assert "AV_WORKFLOW_API_PORT" in dockerfile
+    assert "ffmpeg" in dockerfile
     assert "ARG PYTHON_BASE_IMAGE=python:3.12-slim" in dockerfile
     assert "FROM ${PYTHON_BASE_IMAGE}" in dockerfile
     assert "AV_WORKFLOW_PYTHON_BASE_IMAGE=python:3.12-slim" in env_example

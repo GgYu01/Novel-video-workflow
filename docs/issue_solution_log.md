@@ -57,3 +57,9 @@ Use this file to record recurring failures, root cause evidence, fixes, and regr
 - Root cause: the compose service uses `expose` only and joins the internal Docker and Traefik networks, so the API is reachable from the container network and ingress path but is not published as a host port.
 - Fix: verify health with the container healthcheck, `docker exec`, or the ingress hostname instead of assuming host-loopback access.
 - Regression check: inspect `docker inspect ...State.Health`, run `docker exec av-workflow-av-api-1 ... http://127.0.0.1:8080/health`, and confirm the container stays `healthy`.
+
+### Execution runtime could not produce a real stitched output because the workflow stopped at metadata-only mix/compose contracts
+- Symptom: the repository could plan shots and normalize render/TTS requests, but it still could not produce a runtime job directory with wav assets, concat manifests, and a final stitched video package.
+- Root cause: the control plane had no file-backed execution service, `AudioMixManifest` generation did not materialize a real mix file, and `ffmpeg` availability was not encoded into the module image contract.
+- Fix: add deterministic local render/TTS providers, concatenate wav segments into `runtime/jobs/<job_id>/audio/final-mix.wav`, introduce `DeterministicLocalJobExecutionService` to materialize runtime artifacts, and require `ffmpeg` in `build/Dockerfile.api`.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_job_execution_service.py tests/unit/test_audio_mix_service.py tests/unit/test_module_packaging.py -v`, then run `PYTHONPATH=src ./.venv/bin/pytest tests/unit tests/integration -q`.

@@ -44,6 +44,23 @@ Run the smoke test with:
 PYTHONPATH=src ./.venv/bin/pytest tests/integration/test_api_smoke.py -v
 ```
 
+## Local Execution Slice
+The repository now includes a deterministic local execution path that materializes runtime artifacts under `runtime/jobs/<job_id>/...`.
+
+- `RuntimeWorkspace` owns runtime paths and asset refs.
+- `DeterministicLocalRenderAdapter` emits placeholder shot frames and clip files.
+- `DeterministicLocalTTSAdapter` emits valid wav files for narration and dialogue segments.
+- `DeterministicLocalJobExecutionService` runs ingest, planning, render, timeline, audio mix, and compose into a stitched output package.
+
+The fastest regression entry points are:
+
+```bash
+PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_job_execution_service.py -v
+PYTHONPATH=src ./.venv/bin/pytest tests/unit tests/integration -q
+```
+
+The current development container does not expose `docker` and does not ship host-level `ffmpeg`, so true media execution must happen either through the packaged API image or on the remote `infra-core` host. The local test suite validates the execution contract with deterministic media emitters and a fake ffmpeg executor.
+
 ## Packaging Helpers
 - `scripts/doctor.sh`: validates Python compilation and `docker compose` syntax
 - `scripts/deploy.sh`: validates the compose file and performs `docker compose up -d` when `DRY_RUN=0`

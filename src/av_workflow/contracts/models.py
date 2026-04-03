@@ -166,7 +166,9 @@ class ShotRenderResult(SnapshotModel):
     shot_id: str
     status: RenderJobStatus
     clip_ref: str | None = None
+    clip_path: str | None = None
     frame_refs: list[str] = Field(default_factory=list)
+    frame_paths: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     error_code: str | None = None
     version: int = 1

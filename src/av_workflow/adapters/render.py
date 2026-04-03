@@ -1,14 +1,104 @@
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
 from typing import Any, Protocol
 
 from av_workflow.contracts.enums import MotionTier, RenderBackend, RenderJobStatus
 from av_workflow.contracts.models import ShotPlan, ShotRenderJob, ShotRenderResult
+from av_workflow.runtime.ffmpeg import FfmpegExecutor
+from av_workflow.runtime.workspace import RuntimeWorkspace
 
 
 class RenderAdapter(Protocol):
     def submit(self, render_request: ShotRenderJob) -> dict[str, Any]:
         """Submit a render request and return provider-normalized status data."""
+
+
+class DeterministicLocalRenderAdapter:
+    def __init__(
+        self,
+        *,
+        workspace: RuntimeWorkspace,
+        ffmpeg_executor: FfmpegExecutor,
+        output_size: tuple[int, int] = (1280, 720),
+        fps: int = 24,
+    ) -> None:
+        self.workspace = workspace
+        self.ffmpeg_executor = ffmpeg_executor
+        self.output_size = output_size
+        self.fps = fps
+
+    def submit(self, render_request: ShotRenderJob) -> dict[str, Any]:
+        job_root = self.workspace.ensure_job_tree(render_request.job_id)
+        render_dir = self.workspace.shot_root(render_request.job_id, render_request.shot_id) / "render"
+        render_dir.mkdir(parents=True, exist_ok=True)
+
+        frame_path = render_dir / "frame-001.ppm"
+        clip_path = render_dir / "clip.mp4"
+        self._write_frame(frame_path, render_request)
+        self.ffmpeg_executor.run(
+            [
+                "-y",
+                "-loop",
+                "1",
+                "-framerate",
+                str(self.fps),
+                "-i",
+                str(frame_path),
+                "-t",
+                f"{render_request.requested_duration_sec:.3f}",
+                "-pix_fmt",
+                "yuv420p",
+                str(clip_path),
+            ],
+            cwd=job_root,
+            output_path=clip_path,
+        )
+
+        return {
+            "render_job_id": render_request.render_job_id,
+            "shot_id": render_request.shot_id,
+            "status": "completed",
+            "clip_ref": self.workspace.asset_ref(
+                render_request.job_id,
+                "shots",
+                render_request.shot_id,
+                "render",
+                "clip.mp4",
+            ),
+            "frame_refs": [
+                self.workspace.asset_ref(
+                    render_request.job_id,
+                    "shots",
+                    render_request.shot_id,
+                    "render",
+                    "frame-001.ppm",
+                )
+            ],
+            "clip_path": str(clip_path.resolve()),
+            "frame_paths": [str(frame_path.resolve())],
+            "metadata": {
+                "duration_sec": render_request.requested_duration_sec,
+                "fps": self.fps,
+                "output_size": self.output_size,
+                "backend": render_request.backend.value,
+            },
+        }
+
+    def _write_frame(self, frame_path: Path, render_request: ShotRenderJob) -> None:
+        width, height = self.output_size
+        rgb = self._derive_color(render_request)
+        header = f"P6\n{width} {height}\n255\n".encode("ascii")
+        frame_path.write_bytes(header + bytes(rgb) * width * height)
+
+    def _derive_color(self, render_request: ShotRenderJob) -> tuple[int, int, int]:
+        digest = hashlib.sha256(
+            f"{render_request.job_id}:{render_request.shot_id}:{render_request.backend.value}".encode(
+                "utf-8"
+            )
+        ).digest()
+        return digest[0], digest[1], digest[2]
 
 
 def build_render_request(
@@ -50,8 +140,9 @@ def normalize_render_result(payload: dict[str, Any]) -> ShotRenderResult:
         shot_id=str(payload["shot_id"]),
         status=normalize_render_status(str(payload.get("status", "failed"))),
         clip_ref=payload.get("clip_ref"),
+        clip_path=payload.get("clip_path"),
         frame_refs=list(payload.get("frame_refs", [])),
+        frame_paths=list(payload.get("frame_paths", [])),
         metadata=dict(payload.get("metadata", {})),
         error_code=payload.get("error_code"),
     )
-
