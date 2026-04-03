@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: ./build/Dockerfile.api
+      args:
+        PYTHON_BASE_IMAGE: ${AV_WORKFLOW_PYTHON_BASE_IMAGE:-python:3.12-slim}
     image: av-workflow-api:${AV_WORKFLOW_IMAGE_TAG:-latest}
     env_file:
       - ./.env

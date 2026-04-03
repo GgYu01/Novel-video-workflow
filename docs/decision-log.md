@@ -43,3 +43,7 @@ Use this file for dated architectural and operational decisions that should rema
 ### D-010: Use one layered source of truth for API bind host and port
 - Decision: the container entrypoint and compose healthcheck both resolve `AV_WORKFLOW_API_HOST` and `AV_WORKFLOW_API_PORT` at runtime instead of hard-coding `0.0.0.0:8080`.
 - Why: this keeps image startup, health probing, and reverse-proxy wiring consistent when operators override bind settings through layered environment files.
+
+### D-011: Externalize the Python base image for remote module builds
+- Decision: the image build resolves `PYTHON_BASE_IMAGE` from layered configuration and defaults to `python:3.12-slim` instead of hard-coding a single base image inside the Dockerfile.
+- Why: this keeps remote module deployment resilient when a host already caches one Python base image or reaches registry mirrors inconsistently, while still allowing operators to override the base image without editing source files.

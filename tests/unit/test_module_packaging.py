@@ -22,6 +22,7 @@ def test_root_compose_is_ready_for_infra_core_module_use() -> None:
     av_api = compose["services"]["av-api"]
 
     assert av_api["build"]["dockerfile"] == "./build/Dockerfile.api"
+    assert av_api["build"]["args"]["PYTHON_BASE_IMAGE"] == "${AV_WORKFLOW_PYTHON_BASE_IMAGE:-python:3.12-slim}"
     assert "./.env" in av_api["env_file"]
     assert "./.env.secrets" in av_api["env_file"]
     assert "infra_gateway_net" in av_api["networks"]
@@ -42,6 +43,10 @@ def test_remote_install_script_defaults_to_dry_run() -> None:
 
 def test_api_image_runtime_uses_layered_host_and_port_defaults() -> None:
     dockerfile = Path("build/Dockerfile.api").read_text(encoding="utf-8")
+    env_example = Path(".env.example").read_text(encoding="utf-8")
 
     assert "AV_WORKFLOW_API_HOST" in dockerfile
     assert "AV_WORKFLOW_API_PORT" in dockerfile
+    assert "ARG PYTHON_BASE_IMAGE=python:3.12-slim" in dockerfile
+    assert "FROM ${PYTHON_BASE_IMAGE}" in dockerfile
+    assert "AV_WORKFLOW_PYTHON_BASE_IMAGE=python:3.12-slim" in env_example

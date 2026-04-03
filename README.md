@@ -75,3 +75,9 @@ REMOTE_PASSWORD=*** DRY_RUN=0 ./scripts/install_remote_module.sh
 ```
 
 The compose stack in [docker-compose.yml](/workspaces/auto_video_gen/docker-compose.yml) now doubles as the local development baseline and the future `infra-core` module compose file.
+
+If the target host needs a different cached or mirrored Python base image, override:
+
+```bash
+AV_WORKFLOW_PYTHON_BASE_IMAGE=python:3.12-slim
+```

@@ -33,3 +33,9 @@ Use this file to record recurring failures, root cause evidence, fixes, and regr
 - Root cause: runtime packaging split the bind-port configuration across compose metadata and container entry logic instead of resolving both from the same layered environment contract.
 - Fix: make the image entrypoint resolve `AV_WORKFLOW_API_HOST` and `AV_WORKFLOW_API_PORT` at runtime, and make the compose healthcheck probe the same environment-driven port.
 - Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_module_packaging.py -v` and confirm the packaging tests assert the layered host/port contract.
+
+### Remote build could stall while pulling an uncached Python base image
+- Symptom: the first real `modulectl.sh up av-workflow` attempt hung during `docker compose up -d`, `av-workflow-api` never appeared in `docker images`, and a direct `timeout 30 docker pull python:3.11-slim` exited with `rc=124`.
+- Root cause: the module image hard-coded `python:3.11-slim`, while the target host only had `python:3.12-slim` cached and the configured registry mirror path could not complete the `3.11` pull in time.
+- Fix: externalize the Python base image as a build argument, default it to `python:3.12-slim`, and expose the override through `.env.example` so operators can switch to a cached or mirrored base without editing the Dockerfile.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_module_packaging.py -v` and confirm the packaging tests assert the layered Python base image contract.
