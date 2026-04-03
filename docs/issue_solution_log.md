@@ -63,3 +63,9 @@ Use this file to record recurring failures, root cause evidence, fixes, and regr
 - Root cause: the control plane had no file-backed execution service, `AudioMixManifest` generation did not materialize a real mix file, and `ffmpeg` availability was not encoded into the module image contract.
 - Fix: add deterministic local render/TTS providers, concatenate wav segments into `runtime/jobs/<job_id>/audio/final-mix.wav`, introduce `DeterministicLocalJobExecutionService` to materialize runtime artifacts, and require `ffmpeg` in `build/Dockerfile.api`.
 - Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_job_execution_service.py tests/unit/test_audio_mix_service.py tests/unit/test_module_packaging.py -v`, then run `PYTHONPATH=src ./.venv/bin/pytest tests/unit tests/integration -q`.
+
+### Remote validation initially failed because runtime support files were present locally but absent from git history
+- Symptom: local tests passed, but the remote container still raised `ModuleNotFoundError: No module named 'av_workflow.runtime'` and `ModuleNotFoundError: No module named 'av_workflow.services.job_execution'` after source sync and hot-load attempts.
+- Root cause: the execution-slice implementation used local `src/av_workflow/runtime/*.py` files that had not actually been added to git, and the repository-level `.gitignore` entry `runtime/` unintentionally matched the source directory `src/av_workflow/runtime/`.
+- Fix: narrow the ignore rule with explicit allowlist entries for `src/av_workflow/runtime/`, add `src/av_workflow/runtime/__init__.py`, `src/av_workflow/runtime/workspace.py`, and `src/av_workflow/runtime/ffmpeg.py` to version control, then repush and resync before retrying remote execution.
+- Regression check: run `git ls-files 'src/av_workflow/runtime/*'`, verify the runtime files are tracked, then rerun `PYTHONPATH=src ./.venv/bin/pytest tests/unit tests/integration -q`.

@@ -1,5 +1,7 @@
 # Runtime state
 runtime/
+!src/av_workflow/runtime/
+!src/av_workflow/runtime/*.py
 *.log
 *.tmp
 
