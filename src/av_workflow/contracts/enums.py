@@ -32,6 +32,24 @@ class ShotType(StrEnum):
     INSERT = "insert"
 
 
+class MotionTier(StrEnum):
+    STATIC = "static"
+    LIMITED_MOTION = "limited_motion"
+    WAN_DYNAMIC = "wan_dynamic"
+
+
+class RenderBackend(StrEnum):
+    IMAGE = "image"
+    WAN = "wan"
+
+
+class RenderJobStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 class ReviewMode(StrEnum):
     TECHNICAL = "technical"
     SEMANTIC_IMAGE = "semantic_image"

@@ -6,7 +6,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from av_workflow.contracts.enums import (
     JobStatus,
+    MotionTier,
     PolicyAction,
+    RenderBackend,
+    RenderJobStatus,
     ReviewMode,
     ReviewResult,
     ShotType,
@@ -67,6 +70,27 @@ class StorySpec(SnapshotModel):
     version: int = 1
 
 
+class CharacterBible(SnapshotModel):
+    character_id: str
+    canonical_name: str
+    role: str
+    visual_identity: list[str]
+    wardrobe_rules: list[str] = Field(default_factory=list)
+    continuity_rules: list[str] = Field(default_factory=list)
+    voice_hints: dict[str, Any] = Field(default_factory=dict)
+    version: int = 1
+
+
+class SceneBible(SnapshotModel):
+    scene_id: str
+    location_name: str
+    time_of_day: str
+    environment_description: str
+    continuity_requirements: list[str] = Field(default_factory=list)
+    prop_requirements: list[str] = Field(default_factory=list)
+    version: int = 1
+
+
 class ShotPlan(SnapshotModel):
     shot_id: str
     chapter_id: str
@@ -82,6 +106,55 @@ class ShotPlan(SnapshotModel):
     render_requirements: dict[str, Any]
     review_targets: dict[str, Any]
     fallback_strategy: dict[str, Any]
+    version: int = 1
+
+
+class ShotPlanSet(SnapshotModel):
+    shot_plan_set_id: str
+    story_id: str
+    chapter_id: str
+    default_output_preset: str
+    shots: list[ShotPlan]
+    version: int = 1
+
+
+class VoiceCast(SnapshotModel):
+    voice_cast_id: str
+    story_id: str
+    narrator_voice_id: str
+    character_voice_map: dict[str, str]
+    voice_traits: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    version: int = 1
+
+
+class DialogueTimeline(SnapshotModel):
+    dialogue_timeline_id: str
+    shot_id: str
+    segments: list[dict[str, Any]]
+    total_duration_ms: int
+    version: int = 1
+
+
+class ShotRenderJob(SnapshotModel):
+    render_job_id: str
+    job_id: str
+    shot_id: str
+    motion_tier: MotionTier
+    backend: RenderBackend
+    prompt_bundle: dict[str, Any]
+    source_asset_refs: list[str] = Field(default_factory=list)
+    requested_duration_sec: float
+    version: int = 1
+
+
+class ShotRenderResult(SnapshotModel):
+    render_job_id: str
+    shot_id: str
+    status: RenderJobStatus
+    clip_ref: str | None = None
+    frame_refs: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    error_code: str | None = None
     version: int = 1
 
 

@@ -2,16 +2,32 @@ from __future__ import annotations
 
 from pydantic import ValidationError
 
-from av_workflow.contracts.enums import JobStatus, PolicyAction, ReviewMode, ReviewResult, ShotType
+from av_workflow.contracts.enums import (
+    JobStatus,
+    MotionTier,
+    PolicyAction,
+    RenderBackend,
+    RenderJobStatus,
+    ReviewMode,
+    ReviewResult,
+    ShotType,
+)
 from av_workflow.contracts.models import (
     AssetManifest,
+    CharacterBible,
+    DialogueTimeline,
     Job,
     OutputPackage,
     PolicyDecision,
     ReviewCase,
+    SceneBible,
     ShotPlan,
+    ShotPlanSet,
+    ShotRenderJob,
+    ShotRenderResult,
     SourceDocument,
     StorySpec,
+    VoiceCast,
 )
 
 
@@ -194,3 +210,160 @@ def test_output_package_requires_final_video_reference() -> None:
 
     assert package.version == 1
     assert package.ready_for_delivery is False
+
+
+def test_character_bible_tracks_visual_identity_and_voice_hints() -> None:
+    character = CharacterBible(
+        character_id="character-jose",
+        canonical_name="Jose Alemany",
+        role="protagonist",
+        visual_identity=[
+            "young man",
+            "short dark hair",
+            "late 20th century football setting",
+        ],
+        wardrobe_rules=["avoid modern sportswear logos", "use grounded 1999 styling"],
+        continuity_rules=["keep face shape and age range stable across adjacent shots"],
+        voice_hints={
+            "gender_hint": "male",
+            "age_hint": "young_adult",
+            "tone_hint": "calm_confident",
+        },
+    )
+
+    assert character.version == 1
+    assert character.voice_hints["tone_hint"] == "calm_confident"
+    assert "young man" in character.visual_identity
+
+
+def test_scene_bible_requires_environment_and_continuity_rules() -> None:
+    scene = SceneBible(
+        scene_id="scene-stadium-celebration",
+        location_name="Saint Moix Stadium",
+        time_of_day="day",
+        environment_description="football stadium filled with celebrating home supporters",
+        continuity_requirements=[
+            "maintain crowd density across celebration shots",
+            "preserve Mallorca team color presence",
+        ],
+        prop_requirements=["stadium stands", "pitch sideline", "match-day atmosphere"],
+    )
+
+    assert scene.location_name == "Saint Moix Stadium"
+    assert len(scene.continuity_requirements) == 2
+
+
+def test_shot_plan_set_groups_shots_under_story_and_chapter_scope() -> None:
+    shot = ShotPlan(
+        shot_id="shot-001",
+        chapter_id="ch-1",
+        scene_id="scene-1",
+        duration_target=4.0,
+        shot_type=ShotType.MEDIUM,
+        camera_instruction="steady eye-level framing",
+        subject_instruction="hero steps into the station",
+        environment_instruction="foggy industrial train station",
+        narration_text="The city greeted him with iron and smoke.",
+        dialogue_lines=[],
+        subtitle_source="narration",
+        render_requirements={"aspect_ratio": "16:9"},
+        review_targets={"must_match": ["hero", "station"]},
+        fallback_strategy={"retry_scope": "shot"},
+    )
+    shot_plan_set = ShotPlanSet(
+        shot_plan_set_id="shot-plan-ch1-v1",
+        story_id="story-001",
+        chapter_id="ch-1",
+        default_output_preset="preview_720p24",
+        shots=[shot],
+    )
+
+    assert shot_plan_set.version == 1
+    assert shot_plan_set.shots[0].shot_id == "shot-001"
+    assert shot_plan_set.default_output_preset == "preview_720p24"
+
+
+def test_voice_cast_requires_stable_narrator_and_character_voice_ids() -> None:
+    voice_cast = VoiceCast(
+        voice_cast_id="voice-cast-001",
+        story_id="story-001",
+        narrator_voice_id="narrator.zh_female_01",
+        character_voice_map={
+            "character-jose": "role.zh_male_02",
+            "character-antonio": "role.zh_male_05",
+        },
+        voice_traits={
+            "character-jose": {"speech_rate": 1.0, "pitch_bias": -1},
+            "character-antonio": {"speech_rate": 0.92, "pitch_bias": -3},
+        },
+    )
+
+    assert voice_cast.narrator_voice_id == "narrator.zh_female_01"
+    assert voice_cast.character_voice_map["character-jose"] == "role.zh_male_02"
+
+
+def test_dialogue_timeline_tracks_timed_segments_per_shot() -> None:
+    timeline = DialogueTimeline(
+        dialogue_timeline_id="timeline-shot-001",
+        shot_id="shot-001",
+        segments=[
+            {
+                "segment_id": "seg-001",
+                "speaker": "narrator",
+                "text": "The stadium exploded in celebration.",
+                "start_ms": 0,
+                "end_ms": 1800,
+                "audio_ref": "asset://audio/seg-001.wav",
+            },
+            {
+                "segment_id": "seg-002",
+                "speaker": "character-jose",
+                "text": "Now the real work begins.",
+                "start_ms": 1800,
+                "end_ms": 3200,
+                "audio_ref": "asset://audio/seg-002.wav",
+            },
+        ],
+        total_duration_ms=3200,
+    )
+
+    assert timeline.total_duration_ms == 3200
+    assert timeline.segments[1]["speaker"] == "character-jose"
+
+
+def test_shot_render_job_tracks_motion_tier_backend_and_prompt_bundle() -> None:
+    render_job = ShotRenderJob(
+        render_job_id="render-job-001",
+        job_id="job-001",
+        shot_id="shot-001",
+        motion_tier=MotionTier.WAN_DYNAMIC,
+        backend=RenderBackend.WAN,
+        prompt_bundle={
+            "image_prompt": "football coach lifted into the air by celebrating players",
+            "video_prompt": "dynamic crowd celebration with upward throwing motion",
+        },
+        source_asset_refs=["asset://planning/scene-stadium.json"],
+        requested_duration_sec=4.5,
+    )
+
+    assert render_job.motion_tier is MotionTier.WAN_DYNAMIC
+    assert render_job.backend is RenderBackend.WAN
+    assert render_job.requested_duration_sec == 4.5
+
+
+def test_shot_render_result_requires_normalized_status_and_artifact_refs() -> None:
+    result = ShotRenderResult(
+        render_job_id="render-job-001",
+        shot_id="shot-001",
+        status=RenderJobStatus.SUCCEEDED,
+        clip_ref="asset://shots/shot-001.mp4",
+        frame_refs=[
+            "asset://shots/shot-001/frame-001.png",
+            "asset://shots/shot-001/frame-002.png",
+        ],
+        metadata={"duration_sec": 4.48, "fps": 24},
+    )
+
+    assert result.status is RenderJobStatus.SUCCEEDED
+    assert result.clip_ref == "asset://shots/shot-001.mp4"
+    assert result.metadata["fps"] == 24
