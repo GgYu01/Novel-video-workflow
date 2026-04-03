@@ -47,3 +47,23 @@ Use this file for dated architectural and operational decisions that should rema
 ### D-011: Externalize the Python base image for remote module builds
 - Decision: the image build resolves `PYTHON_BASE_IMAGE` from layered configuration and defaults to `python:3.12-slim` instead of hard-coding a single base image inside the Dockerfile.
 - Why: this keeps remote module deployment resilient when a host already caches one Python base image or reaches registry mirrors inconsistently, while still allowing operators to override the base image without editing source files.
+
+### D-012: Use hybrid shot generation with image-first rendering and selective `Wan` escalation
+- Decision: default all planned shots to image-first execution, and only escalate shots with meaningful physical motion or narrative impact to the local `Wan` rendering path.
+- Why: this preserves visual consistency, reduces CPU pressure on the shared host, and keeps the system capable of finishing chapter-sized jobs without treating every shot as a full video-generation problem.
+
+### D-013: Encapsulate local model runtimes behind internal asynchronous adapter APIs
+- Decision: the workflow engine calls internal render, TTS, and review services rather than calling raw `ComfyUI`, CLI tools, or model runtimes directly.
+- Why: stable adapter APIs make retries, audit trails, status polling, and future backend replacement manageable without coupling the core workflow to provider-specific runtime details.
+
+### D-014: Derive subtitle timing from pre-segmented TTS output rather than post hoc ASR
+- Decision: split narration and dialogue into timed segments before synthesis, generate TTS per segment, and use those measured durations as the primary source of subtitle timing.
+- Why: this keeps subtitles aligned with the authoritative generated audio path and avoids drifting into a second timing system that has to re-infer what the workflow already knows.
+
+### D-015: Support multi-role voice casting in the first implementation without reference voice cloning
+- Decision: assign stable local `voice_id` values to narrator and named roles, keep those assignments job-stable, and allow shot-scoped replacement audio later without making reference voice cloning part of the first release.
+- Why: this gives the user differentiated character voices immediately while keeping the first version deterministic, CPU-stable, and easier to review.
+
+### D-016: Use lightweight multimodal review as L1 triage, not as final continuity authority
+- Decision: use `unsloth/Qwen3.5-0.8B-GGUF` or an equivalent lightweight image-text model for frame-level triage and reserve stronger multimodal review for escalation cases.
+- Why: the lightweight model is suitable for cheap visual defect detection, but continuity and final acceptance need a stricter policy path than a single small model can reliably provide.
