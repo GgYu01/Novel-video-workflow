@@ -1,0 +1,9 @@
+storage:
+  bucket: raw-assets
+review:
+  threshold: 0.8
+adapters:
+  review_provider: antigravity
+runtime:
+  state_backend: postgres
+

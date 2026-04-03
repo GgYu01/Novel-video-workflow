@@ -1,0 +1,18 @@
+# Runtime state
+runtime/
+*.log
+*.tmp
+
+# Local environment
+.env
+.env.secrets
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

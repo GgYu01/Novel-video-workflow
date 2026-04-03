@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir .
+
+COPY scripts ./scripts
+COPY config ./config
+
+RUN mkdir -p /app/runtime
+
+CMD ["sh", "-c", "uvicorn av_workflow.api.app:app --host ${AV_WORKFLOW_API_HOST:-0.0.0.0} --port ${AV_WORKFLOW_API_PORT:-8080}"]
