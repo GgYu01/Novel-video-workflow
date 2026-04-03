@@ -67,3 +67,7 @@ Use this file for dated architectural and operational decisions that should rema
 ### D-016: Use lightweight multimodal review as L1 triage, not as final continuity authority
 - Decision: use `unsloth/Qwen3.5-0.8B-GGUF` or an equivalent lightweight image-text model for frame-level triage and reserve stronger multimodal review for escalation cases.
 - Why: the lightweight model is suitable for cheap visual defect detection, but continuity and final acceptance need a stricter policy path than a single small model can reliably provide.
+
+### D-017: Expose workflow stage and artifact mutation through HTTP, not direct store mutation
+- Decision: keep `InMemoryApiStore` as an internal persistence stub and expose `PATCH /v1/jobs/{job_id}/stage`, `PATCH /v1/jobs/{job_id}/artifacts`, and `PATCH /v1/jobs/{job_id}/shots/{shot_id}/artifacts` as the operator control surface.
+- Why: external automation agents, smoke tests, and future deployment modules should all exercise the same schema-validated contract instead of mutating in-memory state directly.

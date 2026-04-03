@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from av_workflow.contracts.enums import JobStatus
 from av_workflow.contracts.models import (

@@ -39,3 +39,15 @@ Use this file to record recurring failures, root cause evidence, fixes, and regr
 - Root cause: the module image hard-coded `python:3.11-slim`, while the target host only had `python:3.12-slim` cached and the configured registry mirror path could not complete the `3.11` pull in time.
 - Fix: externalize the Python base image as a build argument, default it to `python:3.12-slim`, and expose the override through `.env.example` so operators can switch to a cached or mirrored base without editing the Dockerfile.
 - Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_module_packaging.py -v` and confirm the packaging tests assert the layered Python base image contract.
+
+### Stage and artifact updates needed to stay on the HTTP contract
+- Symptom: the hybrid job flow and smoke tests needed to advance job stage and record generated media refs through the API, rather than mutating the in-memory store directly.
+- Root cause: the control plane already had read endpoints, but the stage/artifact write path was not documented as the operator contract and could drift into test-only store mutation patterns.
+- Fix: expose `PATCH` endpoints for stage, job artifacts, and shot artifacts, keep the store internal, and update the integration tests and README to use the HTTP flow end-to-end.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/integration -v` and confirm both integration tests pass through `TestClient`.
+
+### Deterministic stage runner needed compatibility helpers without forcing orchestration dependencies
+- Symptom: workflow transition tests should validate state progression without requiring a fully wired planning/audio/render stack.
+- Root cause: the stage runner constructor and its transition helpers were too tightly coupled to the end-to-end runtime path.
+- Fix: default the workflow engine in `DeterministicStageRunner`, keep explicit state-transition helpers for unit tests, and require planning/audio/render services only when `run()` is invoked.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_workflow_transitions.py tests/unit/test_stage_runner.py -v` and confirm the state machine remains green.

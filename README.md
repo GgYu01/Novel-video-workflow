@@ -25,11 +25,18 @@ PYTHONPATH=src ./.venv/bin/pytest tests/unit -v
 Use `.venv` for local development unless a CI container provides an equivalent interpreter and dependency set.
 
 ## API Smoke Flow
-The current internal API is intentionally minimal and stub-backed:
+The current internal API is intentionally minimal, schema-validated, and operator-facing:
 - `GET /health`
 - `POST /v1/jobs`
 - `GET /v1/jobs/{job_id}`
+- `PATCH /v1/jobs/{job_id}/stage`
+- `GET /v1/jobs/{job_id}/stage`
+- `PATCH /v1/jobs/{job_id}/artifacts`
 - `GET /v1/jobs/{job_id}/artifacts`
+- `PATCH /v1/jobs/{job_id}/shots/{shot_id}/artifacts`
+- `GET /v1/jobs/{job_id}/shots/{shot_id}/artifacts`
+
+Use the patch endpoints to advance stage state and record generated media refs; use the GET endpoints to inspect the job after each step.
 
 Run the smoke test with:
 
