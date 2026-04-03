@@ -46,12 +46,14 @@ run_remote() {
 
 run_rsync() {
   local -a delete_flags=()
+  local ssh_transport="ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p ${REMOTE_PORT}"
   if [[ "${SYNC_DELETE}" == "1" ]]; then
     delete_flags=(--delete)
   fi
 
   local -a cmd=(
     rsync -az
+    -e "${ssh_transport}"
     "${delete_flags[@]}"
     --exclude=.git
     --exclude=.venv

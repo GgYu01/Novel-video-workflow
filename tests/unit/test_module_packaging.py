@@ -37,6 +37,7 @@ def test_remote_install_script_defaults_to_dry_run() -> None:
     assert 'REMOTE_ROOT="${REMOTE_ROOT:-/mnt/hdo/infra-core}"' in script
     assert 'REMOTE_MODULE_PATH="${REMOTE_MODULE_PATH:-${REMOTE_ROOT}/modules/av-workflow}"' in script
     assert "modules/registry.list" in script
+    assert 'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p ${REMOTE_PORT}' in script
 
 
 def test_api_image_runtime_uses_layered_host_and_port_defaults() -> None:
