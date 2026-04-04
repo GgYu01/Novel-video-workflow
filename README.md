@@ -51,7 +51,7 @@ The repository now includes a deterministic local execution path that materializ
 - `RuntimeWorkspace` owns runtime paths and asset refs.
 - `DeterministicLocalRenderAdapter` emits placeholder shot frames and clip files.
 - `DeterministicLocalTTSAdapter` emits valid wav files for narration and dialogue segments.
-- `DeterministicLocalJobExecutionService` runs ingest, planning, render, timeline, audio mix, and compose into a stitched output package.
+- `DeterministicLocalJobExecutionService` runs ingest, planning, render, timeline, audio mix, compose, technical review, and semantic review into a stitched output package.
 
 Important limitation:
 - The deterministic local render adapter is not a real scene generator. It exists to validate runtime/output contracts.
@@ -69,12 +69,18 @@ The repository now includes the first real-provider replacement surface for rend
 - `config/profiles/routed_api_local.yaml` is the operator switch that flips API execution from `deterministic_local` to `routed_api`.
 - Layered config precedence is `defaults -> modules -> profiles -> env -> runtime`, so `routed_api_local` overrides the module default without hand-editing `config/modules/render.yaml`.
 - The heuristic planner now recognizes both English and Chinese action cues when selecting `wan_dynamic` shots.
+- The routed semantic review profile uses one-shot `llama-mtmd-cli` review with Qwen3-VL 32B Q4_K_M and samples multiple frames per shot instead of only the first frame.
 
 Current limitation:
 - The renderer services now ship placeholder-safe internal APIs and an opt-in `sd_cpp` image backend surface, but the default backend remains placeholder mode until local model binaries and the full `Z-Image` split-model assets are mounted.
 - `av-wan-renderer` is still placeholder-only; the true `Wan2.2-TI2V-5B-GGUF` backend is still a follow-up slice.
 - Placeholder renderer outputs remain intentionally non-deliverable and are expected to fail technical review.
-- The first remote real-image smoke now works through `sd_cpp`, but the workflow still auto-completes from technical QA only. A weak real frame can therefore pass the current gate until semantic image review is integrated.
+- The first remote real-image smoke now works through `sd_cpp`, and the workflow now fail-closes on semantic review. A weak real frame no longer auto-completes just because technical QA passed.
+
+Semantic review is also on-demand rather than resident:
+- `review.semantic.mode=llama_cpp_cli` launches the reviewer as a one-shot subprocess and releases memory when the review exits.
+- The current shared-host default is `Qwen3-VL-32B-Instruct-Q4_K_M` with `mmproj Q8_0`.
+- Keep `config/profiles/routed_api_local_shared_8b.yaml` as the lighter fallback profile when an operator wants a cheaper triage window.
 
 To start the internal render services with the default lightweight placeholder backends:
 
@@ -206,3 +212,4 @@ render:
 
 The repository now also ships [config/profiles/routed_api_local.yaml](/workspaces/auto_video_gen/config/profiles/routed_api_local.yaml), so operators can prefer a profile switch over hand-editing module YAML.
 Because the loader applies profiles after module defaults, `AV_WORKFLOW_CONFIG_PROFILE=routed_api_local` is sufficient to override `render.mode` on the API service.
+That same profile keeps semantic review on-demand, so no resident reviewer process needs to sit in memory between jobs.

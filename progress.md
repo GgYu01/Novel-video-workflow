@@ -245,3 +245,38 @@
   - the workflow can reach `completed` based on technical QA only
   - no explicit semantic image review is executed before `mark_semantic_review_passed(...)`
 - Next implementation priority is therefore semantic image review and fail-closed delivery gating for real-image runs.
+
+### Semantic Review Gate Implemented
+- Inserted an explicit semantic-review stage after technical QA and before `completed`.
+- The workflow now fail-closes when semantic review is missing or fails, and only reaches `completed` after a real semantic pass.
+- Local unit verification: `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_stage_runner.py -q` → passed (`3 passed`).
+
+### Semantic Review Runtime And Qwen Tiering
+- Refactored semantic review into a dedicated service surface under `src/av_workflow/services/review/semantic.py`.
+- Added two runtime modes:
+  - `fail_closed`
+  - `llama_cpp_cli`
+- Added layered review config under `review.semantic` and wired the runtime factory so the execution service now builds:
+  - render adapters
+  - TTS adapter
+  - policy engine with configured threshold
+  - semantic-review service
+- Updated `config/profiles/routed_api_local.yaml` to the current shared-host default reviewer:
+  - `Qwen3-VL-32B-Instruct-Q4_K_M`
+  - `mmproj Q8_0`
+  - `llama-mtmd-cli`
+  - on-demand launch only
+- Captured live host memory evidence before choosing the reviewer tier:
+  - `MemAvailable` about `24 GiB`
+  - `dev-cli` about `34.36 GiB`
+  - AV workflow idle residency only about `182 MiB`
+  - conclusion: do not blame the idle AV services for quality; use on-demand reviewer launch to avoid adding persistent pressure
+- Kept the tier split explicit in config:
+  - `config/profiles/routed_api_local.yaml` for the quality-first `Qwen3-VL-32B-Instruct-Q4_K_M` default
+  - `config/profiles/routed_api_local_shared_8b.yaml` for the on-demand `Qwen3-VL-8B-Instruct-Q8_0` fallback
+- The semantic review service now samples multiple frames per shot instead of only the first frame, so `max_input_frames` is an active quality-control knob rather than dead config.
+
+### Latest Verification
+- `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_stage_runner.py tests/unit/test_job_execution_service.py tests/unit/test_semantic_review.py tests/unit/test_execution_runtime_factory.py tests/unit/test_config_loader.py -q` → passed (`20 passed`)
+- `PYTHONPATH=src ./.venv/bin/pytest tests/unit tests/integration -q` → passed (`114 passed`)
+- `./.venv/bin/python -m compileall src tests` → passed

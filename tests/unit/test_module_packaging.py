@@ -14,6 +14,7 @@ def test_module_packaging_files_exist() -> None:
     assert Path(".env.secrets.example").is_file()
     assert Path("build/Dockerfile.api").is_file()
     assert Path("config/profiles/routed_api_local.yaml").is_file()
+    assert Path("config/profiles/routed_api_local_shared_8b.yaml").is_file()
     assert remote_install_script.is_file()
     assert os.access(remote_install_script, os.X_OK)
     assert z_image_provision_script.is_file()

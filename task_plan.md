@@ -1,7 +1,7 @@
 # Task Plan
 
 ## Goal
-Define and implement the next execution slice that turns the current control-plane skeleton into a runnable local-output workflow: executable composition, adapter-backed runtime calls, and a deterministic job-run entrypoint.
+Converge the real semantic-review path into a quality-first, on-demand reviewer flow: multi-frame Qwen-VL checks, explicit tiering for the shared host, and remote validation of the chosen default model without making it resident.
 
 ## Phases
 | Phase | Status | Notes |
@@ -12,7 +12,8 @@ Define and implement the next execution slice that turns the current control-pla
 | 4. Verify locally and remotely | complete | Local unit/integration verification passed; remote demo frame sampling confirmed placeholder solid-color renders, and the runtime now flags placeholder outputs in technical review. |
 | 5. Capture root cause and fail-closed rules in project docs | complete | Root cause, fail-closed policy, and remaining real-provider gap are documented. |
 | 6. Prepare real provider replacement slice | complete | Added render endpoint config, API-backed image/Wan adapter layer, explicit `render.mode`, job-scoped runtime bootstrap, API execution endpoint, routed render-service apps, compose topology, the `routed_api_local` profile, the corrected split-model `Z-Image` `sd_cpp` command contract, a formal remote provisioning script, and verified the first real CPU image-generation smoke on the remote host. |
-| 7. Close the semantic quality gap for real renders | in_progress | Remote `Z-Image` smoke now completes end to end, but completion is still based on technical QA only. The next slice must add explicit semantic image review and a stricter delivery gate before real-image jobs are allowed to auto-complete. |
+| 7. Close the semantic quality gap for real renders | complete | Added an explicit semantic review gate, a fail-closed review service, and an on-demand `llama.cpp` semantic-review backend surface. Real-image jobs can no longer auto-complete on technical QA alone. |
+| 8. Provision and validate the on-demand Qwen reviewer on the remote host | in_progress | Keep the shared host stable: prefer `Qwen3-VL-32B Q4_K_M + mmproj Q8_0` as the current default, keep `config/profiles/routed_api_local_shared_8b.yaml` as the lighter fallback profile, and validate that the reviewer still runs as a one-shot subprocess instead of a resident server. Local code now samples multiple frames per shot; remote asset provisioning and smoke validation are the remaining checks. |
 
 ## Constraints
 - Keep `xiaoshuo.txt` untracked.

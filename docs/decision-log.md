@@ -119,3 +119,11 @@ Use this file for dated architectural and operational decisions that should rema
 ### D-029: Real render outputs must not auto-complete without explicit semantic review
 - Decision: once the workflow is producing real image or video frames, `completed` must require a real semantic review result rather than treating technical QA as an implicit semantic pass.
 - Why: technical QA only proves codec, duration, subtitle, and placeholder integrity. The first remote `Z-Image` smoke already showed that a visually weak frame can still pass those checks, so auto-completion without semantic review overstates delivery quality.
+
+### D-030: Use Qwen-VL tiering with on-demand model launch for semantic review
+- Decision: use `Qwen3-VL-8B-Instruct-GGUF` as the default L1 semantic triage and `Qwen3-VL-32B-Instruct-GGUF` as the final gate, both launched on-demand (no resident server). Keep `Qwen2-VL-2B-Instruct-GGUF` only as a low-cost fallback for non-critical triage.
+- Why: the 8B GGUF sizes (Q4_K_M ~5.03 GB, Q8_0 ~8.71 GB) support frequent L1 checks, while the 32B Q4_K_M (~19.76 GB) fits the current remote CPU memory headroom for a stronger final judgment when scheduled sparingly. The on-demand launch pattern avoids continuous RAM pressure on the shared host.
+
+### D-031: Keep `routed_api_local` on `Qwen3-VL-32B` for the current quality-first phase
+- Decision: set the current operator-facing routed profile to `Qwen3-VL-32B-Instruct-Q4_K_M` plus `mmproj Q8_0`, and keep `8B` only as a lighter fallback profile.
+- Why: the reviewer is launched on demand and exits after each check, so the host does not need to keep the model resident. The current shared host still has roughly `24 GiB` available after the resident containers, which is enough for a one-shot `32B Q4_K_M` semantic pass during this quality-first phase. Keep `config/profiles/routed_api_local_shared_8b.yaml` as the lighter fallback profile for operators who explicitly want a smaller reviewer.

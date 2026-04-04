@@ -18,8 +18,13 @@ from av_workflow.services.ingest import normalize_source
 from av_workflow.services.planning import DeterministicPlanningService
 from av_workflow.services.render_jobs import DeterministicRenderJobService
 from av_workflow.services.review.technical import evaluate_asset_manifest
+from av_workflow.policy.engine import PolicyEngine
 from av_workflow.workflow.engine import WorkflowEngine
-from av_workflow.workflow.stage_runner import DeterministicStageRunner, StageRunResult
+from av_workflow.workflow.stage_runner import (
+    DeterministicStageRunner,
+    SemanticReviewService,
+    StageRunResult,
+)
 
 
 class DeterministicLocalJobExecutionService:
@@ -32,6 +37,8 @@ class DeterministicLocalJobExecutionService:
         audio_timeline_service: DeterministicAudioTimelineService,
         ffmpeg_executor: FfmpegExecutor,
         workflow_engine: WorkflowEngine | None = None,
+        policy_engine: PolicyEngine | None = None,
+        semantic_review_service: SemanticReviewService | None = None,
     ) -> None:
         self.workspace = RuntimeWorkspace(root_dir=runtime_root)
         self.planning_service = planning_service
@@ -43,6 +50,8 @@ class DeterministicLocalJobExecutionService:
             planning_service=planning_service,
             audio_timeline_service=audio_timeline_service,
             render_job_service=render_job_service,
+            policy_engine=policy_engine,
+            semantic_review_service=semantic_review_service,
         )
 
     def run(self, *, job: Job, raw_text: str) -> StageRunResult:
@@ -168,24 +177,42 @@ class DeterministicLocalJobExecutionService:
         self._write_json(job.job_id, "compose/compose_result.json", compose_result)
 
         composed_job = self.stage_runner.mark_composed(audio_ready_job)
-        review_case = self._build_review_case(
+        technical_review_case = self._build_review_case(
             job=composed_job,
             asset_manifest=asset_manifest,
             audio_mix_manifest_ref=audio_mix_manifest.mix_ref,
             total_duration_ms=max(target_video_duration_ms, total_duration_ms),
             subtitle_reports=subtitle_reports,
         )
-        review_summary_ref = self.workspace.asset_ref(job.job_id, "output", "review_case.json")
         self._write_model(job.job_id, "output/asset_manifest.json", asset_manifest)
-        self._write_model(job.job_id, "output/review_case.json", review_case)
+        self._write_model(job.job_id, "output/technical_review_case.json", technical_review_case)
 
-        reviewed_job = self.stage_runner.apply_review_case(composed_job, review_case)
+        reviewed_job = self.stage_runner.apply_review_case(composed_job, technical_review_case)
+        semantic_review_case = None
+        final_review_case = technical_review_case
+        review_summary_ref = self.workspace.asset_ref(job.job_id, "output", "review_case.json")
+        completed_job = reviewed_job
         if reviewed_job.status is JobStatus.QA_TECHNICAL_PASSED:
-            reviewed_job = self.stage_runner.mark_semantic_review_passed(reviewed_job)
-            reviewed_job = self.stage_runner.mark_output_ready(reviewed_job)
-            completed_job = self.stage_runner.complete(reviewed_job)
-        else:
-            completed_job = reviewed_job
+            semantic_review_case = self.stage_runner.evaluate_semantic_review(
+                job=reviewed_job,
+                manifest=asset_manifest,
+                shot_plan_set=shot_plan_set,
+                frame_path_map={
+                    shot_id: [Path(path) for path in result.frame_paths]
+                    for shot_id, result in render_results.items()
+                },
+            )
+            self._write_model(job.job_id, "output/semantic_review_case.json", semantic_review_case)
+            semantic_reviewed_job = self.stage_runner.apply_review_case(reviewed_job, semantic_review_case)
+            final_review_case = semantic_review_case
+            review_summary_ref = self.workspace.asset_ref(job.job_id, "output", "review_case.json")
+            if semantic_reviewed_job.status is JobStatus.QA_SEMANTIC_PASSED:
+                semantic_reviewed_job = self.stage_runner.mark_output_ready(semantic_reviewed_job)
+                completed_job = self.stage_runner.complete(semantic_reviewed_job)
+            else:
+                completed_job = semantic_reviewed_job
+
+        self._write_model(job.job_id, "output/review_case.json", final_review_case)
 
         output_package = assemble_output_package(
             manifest=asset_manifest,
@@ -203,7 +230,9 @@ class DeterministicLocalJobExecutionService:
             render_results=render_results,
             audio_mix_manifest=audio_mix_manifest,
             asset_manifest=asset_manifest,
-            review_case=review_case,
+            technical_review_case=technical_review_case,
+            review_case=final_review_case,
+            semantic_review_case=semantic_review_case,
             output_package=output_package,
         )
 

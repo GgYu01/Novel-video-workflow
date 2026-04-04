@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Mapping, Sequence
 
 from av_workflow.contracts.enums import JobStatus, PolicyAction
 from av_workflow.contracts.models import (
@@ -23,6 +25,10 @@ from av_workflow.services.compose import assemble_output_package, build_asset_ma
 from av_workflow.services.ingest import normalize_source
 from av_workflow.services.planning import DeterministicPlanningService
 from av_workflow.services.render_jobs import DeterministicRenderJobService
+from av_workflow.services.review.semantic import (
+    FailClosedSemanticReviewService,
+    SemanticReviewService,
+)
 from av_workflow.services.review.technical import evaluate_asset_manifest
 from av_workflow.policy.engine import PolicyEngine
 from av_workflow.workflow.engine import WorkflowEngine
@@ -39,7 +45,9 @@ class StageRunResult:
     render_results: dict[str, ShotRenderResult]
     audio_mix_manifest: AudioMixManifest
     asset_manifest: AssetManifest
+    technical_review_case: ReviewCase
     review_case: ReviewCase
+    semantic_review_case: ReviewCase | None
     output_package: OutputPackage
 
 
@@ -52,12 +60,14 @@ class DeterministicStageRunner:
         audio_timeline_service: DeterministicAudioTimelineService | None = None,
         render_job_service: DeterministicRenderJobService | None = None,
         policy_engine: PolicyEngine | None = None,
+        semantic_review_service: SemanticReviewService | None = None,
     ) -> None:
         self.workflow_engine = workflow_engine or WorkflowEngine()
         self.planning_service = planning_service
         self.audio_timeline_service = audio_timeline_service
         self.render_job_service = render_job_service
         self.policy_engine = policy_engine or PolicyEngine(semantic_threshold=0.9)
+        self.semantic_review_service = semantic_review_service or FailClosedSemanticReviewService()
 
     def normalize(self, job: Job) -> Job:
         return self.workflow_engine.advance(job, JobStatus.NORMALIZED)
@@ -186,15 +196,30 @@ class DeterministicStageRunner:
             },
         )
         reviewed_job = self.apply_review_case(composed_job, review_case)
+        semantic_review_case = None
+        final_review_case = review_case
+        completed_job = reviewed_job
         if reviewed_job.status is JobStatus.QA_TECHNICAL_PASSED:
-            reviewed_job = self.mark_semantic_review_passed(reviewed_job)
-            reviewed_job = self.mark_output_ready(reviewed_job)
-            completed_job = self.complete(reviewed_job)
-        else:
-            completed_job = reviewed_job
+            semantic_review_case = self.evaluate_semantic_review(
+                job=reviewed_job,
+                manifest=asset_manifest,
+                shot_plan_set=shot_plan_set,
+                frame_path_map={
+                    shot_id: [Path(path) for path in result.frame_paths]
+                    for shot_id, result in render_results.items()
+                },
+            )
+            semantic_reviewed_job = self.apply_review_case(reviewed_job, semantic_review_case)
+            final_review_case = semantic_review_case
+            if semantic_reviewed_job.status is JobStatus.QA_SEMANTIC_PASSED:
+                semantic_reviewed_job = self.mark_output_ready(semantic_reviewed_job)
+                completed_job = self.complete(semantic_reviewed_job)
+            else:
+                completed_job = semantic_reviewed_job
+        review_summary_ref = f"asset://reviews/{job.job_id}/review_case.json"
         output_package = assemble_output_package(
             manifest=asset_manifest,
-            review_summary_ref=f"asset://reviews/{job.job_id}/technical.json",
+            review_summary_ref=review_summary_ref,
         )
 
         return StageRunResult(
@@ -207,14 +232,31 @@ class DeterministicStageRunner:
             render_results=render_results,
             audio_mix_manifest=audio_mix_manifest,
             asset_manifest=asset_manifest,
-            review_case=review_case,
+            technical_review_case=review_case,
+            review_case=final_review_case,
+            semantic_review_case=semantic_review_case,
             output_package=output_package,
+        )
+
+    def evaluate_semantic_review(
+        self,
+        *,
+        job: Job,
+        manifest: AssetManifest,
+        shot_plan_set: ShotPlanSet,
+        frame_path_map: Mapping[str, Sequence[Path]] | None = None,
+    ) -> ReviewCase:
+        return self.semantic_review_service.evaluate(
+            job=job,
+            manifest=manifest,
+            shot_plan_set=shot_plan_set,
+            frame_path_map=frame_path_map,
         )
 
     def apply_review_case(self, job: Job, review_case: ReviewCase) -> Job:
         decision = self.policy_engine.evaluate_review(job, review_case)
         if decision.action is PolicyAction.CONTINUE:
-            return self.mark_technical_review_passed(job)
+            return self.workflow_engine.advance(job, decision.target_status)
         return self._apply_policy_decision(job, decision)
 
     def _apply_policy_decision(self, job: Job, decision: PolicyDecision) -> Job:

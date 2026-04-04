@@ -219,6 +219,26 @@ def test_config_loader_applies_profile_after_module_defaults(tmp_path: Path) -> 
         """
         render:
           mode: routed_api
+        review:
+          semantic:
+            mode: llama_cpp_cli
+            provider: qwen3_vl
+            model_family: qwen3_vl
+            model_size: 8b
+            model_quantization: Q8_0
+            mmproj_quantization: Q8_0
+            command_path: llama-mtmd-cli
+            model_path: /models/qwen3/Qwen3-VL-8B-Instruct-Q8_0.gguf
+            mmproj_path: /models/qwen3/Qwen3-VL-8B-Instruct-mmproj-Q8_0.gguf
+            timeout_sec: 1800.0
+            max_tokens: 256
+            ctx_size: 4096
+            max_input_frames: 4
+            extra_args:
+              - --temp
+              - "0.0"
+              - --top-p
+              - "1.0"
         """,
     )
     write_yaml(
@@ -236,6 +256,12 @@ def test_config_loader_applies_profile_after_module_defaults(tmp_path: Path) -> 
 
     assert config.render.mode == "routed_api"
     assert config.render.image_endpoint.base_url == "http://image-render.internal"
+    assert config.review.semantic.mode == "llama_cpp_cli"
+    assert config.review.semantic.command_path == "llama-mtmd-cli"
+    assert config.review.semantic.model_size == "8b"
+    assert config.review.semantic.model_quantization == "Q8_0"
+    assert config.review.semantic.model_path == "/models/qwen3/Qwen3-VL-8B-Instruct-Q8_0.gguf"
+    assert config.review.semantic.mmproj_path == "/models/qwen3/Qwen3-VL-8B-Instruct-mmproj-Q8_0.gguf"
 
 
 def test_repo_routed_render_defaults_allow_cpu_backend_latency() -> None:
@@ -250,6 +276,31 @@ def test_repo_routed_render_defaults_allow_cpu_backend_latency() -> None:
     assert config.render.mode == "routed_api"
     assert config.render.image_endpoint.timeout_sec == 300.0
     assert config.render.wan_endpoint.timeout_sec == 1800.0
+    assert config.review.require_semantic_pass_for_completion is True
+    assert config.review.semantic.mode == "llama_cpp_cli"
+    assert config.review.semantic.model_family == "qwen3_vl"
+    assert config.review.semantic.model_size == "32b"
+    assert config.review.semantic.command_path == "llama-mtmd-cli"
+    assert config.review.semantic.model_quantization == "Q4_K_M"
+
+
+def test_repo_shared_host_review_profile_selects_8b_q8_on_demand_reviewer() -> None:
+    config_root = Path(__file__).resolve().parents[2] / "config"
+    loader = ConfigLoader(config_root=config_root)
+
+    config = loader.load(
+        profile_name="routed_api_local_shared_8b",
+        module_names=["render", "audio", "review"],
+    )
+
+    assert config.render.mode == "routed_api"
+    assert config.review.require_semantic_pass_for_completion is True
+    assert config.review.semantic.mode == "llama_cpp_cli"
+    assert config.review.semantic.launch_scope == "per_job"
+    assert config.review.semantic.model_size == "8b"
+    assert config.review.semantic.model_quantization == "Q8_0"
+    assert config.review.semantic.mmproj_quantization == "Q8_0"
+    assert config.review.semantic.model_path == "/models/qwen3/Qwen3-VL-8B-Instruct-Q8_0.gguf"
 
 
 def test_config_loader_rejects_invalid_module_schema(tmp_path: Path) -> None:

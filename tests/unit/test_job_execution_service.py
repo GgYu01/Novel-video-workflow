@@ -5,14 +5,15 @@ from pathlib import Path
 
 from av_workflow.adapters.render import DeterministicLocalRenderAdapter
 from av_workflow.adapters.tts import DeterministicLocalTTSAdapter
-from av_workflow.contracts.enums import JobStatus, ReviewResult, ShotType
-from av_workflow.contracts.models import Job, SourceDocument
+from av_workflow.contracts.enums import JobStatus, ReviewMode, ReviewResult, ShotType
+from av_workflow.contracts.models import AssetManifest, Job, ReviewCase, ShotPlanSet, SourceDocument
 from av_workflow.runtime.workspace import RuntimeWorkspace
 from av_workflow.services.audio_timeline import DeterministicAudioTimelineService
 from av_workflow.services.job_execution import DeterministicLocalJobExecutionService
 from av_workflow.services.planning import DeterministicPlanningService
 from av_workflow.services.render_jobs import DeterministicRenderJobService
 from av_workflow.services.story_bible import DeterministicStoryBibleService
+from av_workflow.workflow.stage_runner import SemanticReviewService
 
 
 class RecordingFfmpegExecutor:
@@ -114,6 +115,35 @@ class PngRenderAdapter:
                 "frame_count": 1,
             },
         }
+
+
+class PassingSemanticReviewService(SemanticReviewService):
+    def evaluate(
+        self,
+        *,
+        job: Job,
+        manifest: AssetManifest,
+        shot_plan_set: ShotPlanSet,
+        frame_path_map=None,
+    ) -> ReviewCase:
+        return ReviewCase(
+            review_case_id=f"review-{job.job_id}-semantic-pass",
+            target_type="asset_manifest",
+            target_ref=manifest.manifest_ref,
+            review_mode=ReviewMode.SEMANTIC_IMAGE,
+            input_assets=[*manifest.preview_refs, *manifest.cover_refs],
+            evaluation_prompt_ref="prompt://review/semantic-default",
+            result=ReviewResult.PASS,
+            score=0.95,
+            reason_codes=["semantic_alignment_ok"],
+            reason_text="Semantic review passed.",
+            fix_hint=None,
+            recommended_action="continue",
+            review_provider="semantic-stub",
+            provider_version="test",
+            latency_ms=9,
+            raw_response_ref=f"raw://semantic-review/{job.job_id}.json",
+        )
 
 
 def build_job() -> Job:
@@ -256,3 +286,81 @@ def test_local_job_execution_service_uses_real_frame_suffix_for_preview_assets(t
     assert result.asset_manifest.cover_refs == ["asset://runtime/jobs/job-001/output/cover.png"]
     assert (runtime_root / "jobs" / "job-001" / "output" / "preview.png").is_file()
     assert (runtime_root / "jobs" / "job-001" / "output" / "cover.png").is_file()
+
+
+def test_local_job_execution_service_fails_closed_when_real_render_has_no_semantic_review(
+    tmp_path: Path,
+) -> None:
+    runtime_root = tmp_path / "runtime"
+    workspace = RuntimeWorkspace(root_dir=runtime_root)
+    ffmpeg_executor = RecordingFfmpegExecutor()
+
+    render_service = DeterministicRenderJobService(render_adapter=PngRenderAdapter(workspace))
+    planning_service = DeterministicPlanningService(
+        shot_planner=StaticShotPlanner(),
+        story_bible_service=DeterministicStoryBibleService(),
+    )
+    audio_service = DeterministicAudioTimelineService(
+        tts_adapter=DeterministicLocalTTSAdapter(workspace=workspace, job_id="job-001")
+    )
+    execution_service = DeterministicLocalJobExecutionService(
+        runtime_root=runtime_root,
+        planning_service=planning_service,
+        render_job_service=render_service,
+        audio_timeline_service=audio_service,
+        ffmpeg_executor=ffmpeg_executor,
+    )
+
+    result = execution_service.run(
+        job=build_job(),
+        raw_text=(
+            "Chapter 1: Quiet Box\n"
+            "Jose studied the empty stadium box."
+        ),
+    )
+
+    assert result.final_job.status is JobStatus.MANUAL_HOLD
+    assert result.semantic_review_case is not None
+    assert result.technical_review_case.review_mode is ReviewMode.TECHNICAL
+    assert result.review_case.review_mode is ReviewMode.SEMANTIC_IMAGE
+    assert "semantic_review_backend_disabled" in result.review_case.reason_codes
+
+
+def test_local_job_execution_service_completes_real_render_after_semantic_review_pass(
+    tmp_path: Path,
+) -> None:
+    runtime_root = tmp_path / "runtime"
+    workspace = RuntimeWorkspace(root_dir=runtime_root)
+    ffmpeg_executor = RecordingFfmpegExecutor()
+
+    render_service = DeterministicRenderJobService(render_adapter=PngRenderAdapter(workspace))
+    planning_service = DeterministicPlanningService(
+        shot_planner=StaticShotPlanner(),
+        story_bible_service=DeterministicStoryBibleService(),
+    )
+    audio_service = DeterministicAudioTimelineService(
+        tts_adapter=DeterministicLocalTTSAdapter(workspace=workspace, job_id="job-001")
+    )
+    execution_service = DeterministicLocalJobExecutionService(
+        runtime_root=runtime_root,
+        planning_service=planning_service,
+        render_job_service=render_service,
+        audio_timeline_service=audio_service,
+        ffmpeg_executor=ffmpeg_executor,
+        semantic_review_service=PassingSemanticReviewService(),
+    )
+
+    result = execution_service.run(
+        job=build_job(),
+        raw_text=(
+            "Chapter 1: Quiet Box\n"
+            "Jose studied the empty stadium box."
+        ),
+    )
+
+    assert result.final_job.status is JobStatus.COMPLETED
+    assert result.semantic_review_case is not None
+    assert result.technical_review_case.review_mode is ReviewMode.TECHNICAL
+    assert result.semantic_review_case.review_mode is ReviewMode.SEMANTIC_IMAGE
+    assert result.review_case.review_mode is ReviewMode.SEMANTIC_IMAGE
+    assert result.review_case.result is ReviewResult.PASS

@@ -127,5 +127,17 @@ Use this file to record recurring failures, root cause evidence, fixes, and regr
 ### Real image outputs can still bypass semantic QA and auto-complete
 - Symptom: remote `job-0001` completed with `review_result=pass` after generating real `Z-Image` PNG frames, but local visual inspection of the returned artifacts showed at least one shot (`shot-001`) was still noisy and semantically weak.
 - Root cause: `evaluate_asset_manifest(...)` validates only stream/subtitle structure and placeholder provenance, while `DeterministicLocalJobExecutionService.run(...)` immediately calls `mark_semantic_review_passed(...)` after a technical pass without executing a real semantic image-review stage.
-- Planned fix: add an explicit semantic image-review service for real-render jobs and fail closed when that review is missing or non-passing, instead of synthesizing semantic approval from technical approval.
-- Pending regression check: rerun the remote calm-smoke workflow after semantic review integration and confirm weak real-image outputs no longer reach `completed` without an explicit semantic pass.
+- Fix: insert an explicit semantic-review gate that runs after technical QA. The pipeline now fail-closes when semantic review is unavailable or fails, and `completed` is only reached after a true semantic pass.
+- Regression check: rerun the remote calm-smoke workflow after semantic review integration and confirm weak real-image outputs no longer reach `completed` without an explicit semantic pass.
+
+### Idle AV services were not the meaningful memory bottleneck for reviewer sizing
+- Symptom: the shared remote host looked memory-stressed, so it was unclear whether the current AV services had to be stopped before adding a stronger Qwen-VL reviewer.
+- Root cause: live host evidence showed the opposite problem. `dev-cli` was consuming about `34.36 GiB`, `MemAvailable` was still about `24 GiB`, swap usage was already above `100 GiB`, and the AV workflow itself was small (`av-image-renderer` + `av-wan-renderer` about `139 MiB`, full AV stack about `182 MiB`).
+- Fix: keep the semantic reviewer on an on-demand launch path instead of a resident server, set `Qwen3-VL-32B Q4_K_M` as the current routed-profile default, and keep `config/profiles/routed_api_local_shared_8b.yaml` as the lighter fallback profile rather than always-on deployment.
+- Regression check: verify `docker stats --no-stream`, `free -h`, and a routed job on the remote host still show the reviewer only running during QA, not as a permanently resident process.
+
+### Semantic review only saw the first frame in each shot
+- Symptom: real shots with multiple extracted frames could still look weak in review, because the semantic gate was only evaluating the first frame per shot.
+- Root cause: `LlamaCppCliSemanticReviewService` selected `frame_paths[0]` and discarded the rest of `ShotRenderResult.frame_paths`, so `max_input_frames` had no effect.
+- Fix: sample up to `max_input_frames` evenly across the shot, pass every selected frame to `llama-mtmd-cli`, and keep the review launch on-demand with layered deterministic CLI args.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_semantic_review.py tests/unit/test_config_loader.py tests/unit/test_execution_runtime_factory.py -q` and confirm the selected frame set plus prompt ref are preserved in the review case.

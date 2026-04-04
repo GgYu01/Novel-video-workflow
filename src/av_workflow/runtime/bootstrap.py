@@ -14,12 +14,14 @@ from av_workflow.adapters.render import (
 from av_workflow.adapters.tts import DeterministicLocalTTSAdapter
 from av_workflow.config.loader import ConfigLoader
 from av_workflow.config.models import AppConfig
+from av_workflow.policy.engine import PolicyEngine
 from av_workflow.runtime.ffmpeg import FfmpegExecutor, SubprocessFfmpegExecutor
 from av_workflow.runtime.workspace import RuntimeWorkspace
 from av_workflow.services.audio_timeline import DeterministicAudioTimelineService
 from av_workflow.services.job_execution import DeterministicLocalJobExecutionService
 from av_workflow.services.planning import DeterministicPlanningService, HeuristicChapterShotPlanner
 from av_workflow.services.render_jobs import DeterministicRenderJobService
+from av_workflow.services.review.semantic import build_semantic_review_service
 from av_workflow.services.story_bible import DeterministicStoryBibleService
 
 
@@ -44,12 +46,16 @@ class JobExecutionServiceFactory:
         audio_timeline_service = DeterministicAudioTimelineService(
             tts_adapter=DeterministicLocalTTSAdapter(workspace=workspace, job_id=job_id)
         )
+        semantic_review_service = build_semantic_review_service(self.config.review.semantic)
+        policy_engine = PolicyEngine(semantic_threshold=self.config.review.threshold)
         return DeterministicLocalJobExecutionService(
             runtime_root=self.runtime_root,
             planning_service=planning_service,
             render_job_service=render_job_service,
             audio_timeline_service=audio_timeline_service,
             ffmpeg_executor=self.ffmpeg_executor,
+            policy_engine=policy_engine,
+            semantic_review_service=semantic_review_service,
         )
 
 
@@ -112,8 +118,6 @@ def build_render_adapter(
             ),
         )
     raise ValueError(f"Unsupported render mode: {config.render.mode}")
-
-
 def _parse_module_names(value: str | None) -> list[str]:
     if value is None:
         return ["render", "audio", "review"]

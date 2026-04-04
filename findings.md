@@ -148,3 +148,22 @@
   - `shot-002` prompt: raw narration sentence plus `Chapter 1`
   - `shot-003` prompt: raw narration sentence plus `Chapter 1`
 - That prompt shape is a likely contributor to weak visual quality, but the confirmed architectural gap is broader: the workflow still lacks an explicit semantic image-review gate before auto-completion.
+
+## 2026-04-04 Semantic Gate And Host Memory
+
+- The shared remote host currently has meaningful free headroom, but the AV workflow itself is not the dominant memory consumer:
+  - host `MemAvailable`: about `24 GiB`
+  - swap already used: about `100 GiB`
+  - `dev-cli` container alone is using about `34.36 GiB`
+  - `av-image-renderer` + `av-wan-renderer` idle residency is only about `139 MiB`
+  - the full AV stack including `av-api` is only about `182 MiB`
+- Therefore stopping the current AV model services would not materially change quality or capacity. The quality bottleneck is not idle service residency; it is model/output quality plus the missing semantic gate.
+- The repository now has an explicit semantic-review contract:
+  - `ReviewConfig.semantic` models the on-demand reviewer backend
+  - `DeterministicStageRunner` and `DeterministicLocalJobExecutionService` now require a real semantic pass before `completed`
+  - the final `review_case` now reflects the decisive gate (`technical` if technical QA fails, otherwise `semantic_image`)
+- The semantic reviewer now samples multiple frames per shot instead of only the first frame, so `max_input_frames` is now an active quality-control knob instead of a dead config value.
+- Short-term reviewer recommendation for the shared CPU host:
+  - default routed profile: `Qwen3-VL-32B-Instruct-GGUF` `Q4_K_M` plus `mmproj Q8_0`
+  - optional lighter fallback profile: `config/profiles/routed_api_local_shared_8b.yaml` with `Qwen3-VL-8B-Instruct-GGUF` `Q8_0`
+  - do not keep either model resident; launch `llama-mtmd-cli` only during semantic QA, then exit
