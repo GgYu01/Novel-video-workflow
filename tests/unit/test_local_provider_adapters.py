@@ -61,6 +61,8 @@ def test_local_render_adapter_writes_frame_and_clip_files() -> None:
     assert executor.calls[0][2] == Path("/tmp/runtime-root/jobs/job-001/shots/shot-001/render/clip.mp4")
     assert Path("/tmp/runtime-root/jobs/job-001/shots/shot-001/render/frame-001.ppm").read_bytes().startswith(b"P6")
     assert Path("/tmp/runtime-root/jobs/job-001/shots/shot-001/render/clip.mp4").read_bytes() == b"fake-mp4"
+    assert result["metadata"]["content_source"] == "deterministic_placeholder"
+    assert result["metadata"]["placeholder_mode"] == "solid_color_loop"
 
 
 def test_local_tts_adapter_writes_wav_file_and_keeps_duration_contract() -> None:

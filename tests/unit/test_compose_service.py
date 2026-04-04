@@ -47,6 +47,7 @@ def test_build_asset_manifest_collects_traceable_media_outputs() -> None:
             "shot-001": {
                 "clip_ref": "asset://shots/shot-001.mp4",
                 "frame_refs": ["asset://frames/shot-001-001.png"],
+                "render_metadata": {"content_source": "image_model", "placeholder_mode": None},
             }
         },
         subtitle_refs=["asset://subtitles/final.srt"],
@@ -59,6 +60,10 @@ def test_build_asset_manifest_collects_traceable_media_outputs() -> None:
 
     assert manifest.job_id == job.job_id
     assert manifest.shot_assets[0]["shot_id"] == shot_plan.shot_id
+    assert manifest.shot_assets[0]["render_metadata"] == {
+        "content_source": "image_model",
+        "placeholder_mode": None,
+    }
     assert manifest.subtitle_refs == ["asset://subtitles/final.srt"]
     assert manifest.primary_audio_ref == "asset://audio/final-mix.wav"
     assert manifest.final_video_ref == "asset://video/final.mp4"
@@ -74,6 +79,7 @@ def test_assemble_output_package_uses_manifest_outputs() -> None:
             "shot-001": {
                 "clip_ref": "asset://shots/shot-001.mp4",
                 "frame_refs": ["asset://frames/shot-001-001.png"],
+                "render_metadata": {},
             }
         },
         subtitle_refs=["asset://subtitles/final.srt"],
@@ -106,6 +112,7 @@ def test_build_asset_manifest_uses_first_audio_ref_when_mix_not_provided() -> No
             "shot-001": {
                 "clip_ref": "asset://shots/shot-001.mp4",
                 "frame_refs": ["asset://frames/shot-001-001.png"],
+                "render_metadata": {},
             }
         },
         subtitle_refs=["asset://subtitles/final.srt"],

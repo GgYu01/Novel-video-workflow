@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from av_workflow.contracts.enums import JobStatus
+from av_workflow.contracts.enums import JobStatus, PolicyAction
 from av_workflow.contracts.models import (
     AssetManifest,
     AudioMixManifest,
     Job,
     OutputPackage,
+    PolicyDecision,
     ReviewCase,
     ShotPlan,
     ShotPlanSet,
@@ -23,6 +24,7 @@ from av_workflow.services.ingest import normalize_source
 from av_workflow.services.planning import DeterministicPlanningService
 from av_workflow.services.render_jobs import DeterministicRenderJobService
 from av_workflow.services.review.technical import evaluate_asset_manifest
+from av_workflow.policy.engine import PolicyEngine
 from av_workflow.workflow.engine import WorkflowEngine
 
 
@@ -49,11 +51,13 @@ class DeterministicStageRunner:
         planning_service: DeterministicPlanningService | None = None,
         audio_timeline_service: DeterministicAudioTimelineService | None = None,
         render_job_service: DeterministicRenderJobService | None = None,
+        policy_engine: PolicyEngine | None = None,
     ) -> None:
         self.workflow_engine = workflow_engine or WorkflowEngine()
         self.planning_service = planning_service
         self.audio_timeline_service = audio_timeline_service
         self.render_job_service = render_job_service
+        self.policy_engine = policy_engine or PolicyEngine(semantic_threshold=0.9)
 
     def normalize(self, job: Job) -> Job:
         return self.workflow_engine.advance(job, JobStatus.NORMALIZED)
@@ -120,6 +124,7 @@ class DeterministicStageRunner:
             rendered_shots[shot_plan.shot_id] = {
                 "clip_ref": render_result.clip_ref,
                 "frame_refs": list(render_result.frame_refs),
+                "render_metadata": dict(render_result.metadata),
             }
 
             timeline = self.audio_timeline_service.build_timeline(
@@ -180,10 +185,13 @@ class DeterministicStageRunner:
                 for subtitle_ref in subtitle_refs
             },
         )
-        reviewed_job = self.mark_technical_review_passed(composed_job)
-        reviewed_job = self.mark_semantic_review_passed(reviewed_job)
-        reviewed_job = self.mark_output_ready(reviewed_job)
-        completed_job = self.complete(reviewed_job)
+        reviewed_job = self.apply_review_case(composed_job, review_case)
+        if reviewed_job.status is JobStatus.QA_TECHNICAL_PASSED:
+            reviewed_job = self.mark_semantic_review_passed(reviewed_job)
+            reviewed_job = self.mark_output_ready(reviewed_job)
+            completed_job = self.complete(reviewed_job)
+        else:
+            completed_job = reviewed_job
         output_package = assemble_output_package(
             manifest=asset_manifest,
             review_summary_ref=f"asset://reviews/{job.job_id}/technical.json",
@@ -202,3 +210,20 @@ class DeterministicStageRunner:
             review_case=review_case,
             output_package=output_package,
         )
+
+    def apply_review_case(self, job: Job, review_case: ReviewCase) -> Job:
+        decision = self.policy_engine.evaluate_review(job, review_case)
+        if decision.action is PolicyAction.CONTINUE:
+            return self.mark_technical_review_passed(job)
+        return self._apply_policy_decision(job, decision)
+
+    def _apply_policy_decision(self, job: Job, decision: PolicyDecision) -> Job:
+        if decision.action is PolicyAction.RETRY:
+            if decision.resume_at is None:
+                raise ValueError("Retry decisions require a resume_at status.")
+            return self.workflow_engine.schedule_retry(job, resume_at=decision.resume_at)
+        if decision.action is PolicyAction.MANUAL_HOLD:
+            return self.workflow_engine.place_on_hold(job)
+        if decision.action is PolicyAction.QUARANTINE:
+            return self.workflow_engine.quarantine(job, reason=decision.reason_text)
+        raise ValueError(f"Unsupported review policy action: {decision.action.value}")

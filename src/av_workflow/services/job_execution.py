@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from av_workflow.contracts.enums import JobStatus
 from av_workflow.contracts.models import DialogueTimeline, Job, ReviewCase, ShotPlan, ShotRenderResult
 from av_workflow.runtime.ffmpeg import FfmpegExecutor
 from av_workflow.runtime.workspace import RuntimeWorkspace
@@ -91,6 +92,7 @@ class DeterministicLocalJobExecutionService:
             rendered_shots[shot_plan.shot_id] = {
                 "clip_ref": render_result.clip_ref,
                 "frame_refs": list(render_result.frame_refs),
+                "render_metadata": dict(render_result.metadata),
             }
             if render_result.clip_path is not None:
                 shot_clip_paths.append(Path(render_result.clip_path))
@@ -174,10 +176,13 @@ class DeterministicLocalJobExecutionService:
         self._write_model(job.job_id, "output/asset_manifest.json", asset_manifest)
         self._write_model(job.job_id, "output/review_case.json", review_case)
 
-        reviewed_job = self.stage_runner.mark_technical_review_passed(composed_job)
-        reviewed_job = self.stage_runner.mark_semantic_review_passed(reviewed_job)
-        reviewed_job = self.stage_runner.mark_output_ready(reviewed_job)
-        completed_job = self.stage_runner.complete(reviewed_job)
+        reviewed_job = self.stage_runner.apply_review_case(composed_job, review_case)
+        if reviewed_job.status is JobStatus.QA_TECHNICAL_PASSED:
+            reviewed_job = self.stage_runner.mark_semantic_review_passed(reviewed_job)
+            reviewed_job = self.stage_runner.mark_output_ready(reviewed_job)
+            completed_job = self.stage_runner.complete(reviewed_job)
+        else:
+            completed_job = reviewed_job
 
         output_package = assemble_output_package(
             manifest=asset_manifest,

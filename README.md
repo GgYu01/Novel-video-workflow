@@ -52,6 +52,11 @@ The repository now includes a deterministic local execution path that materializ
 - `DeterministicLocalTTSAdapter` emits valid wav files for narration and dialogue segments.
 - `DeterministicLocalJobExecutionService` runs ingest, planning, render, timeline, audio mix, and compose into a stitched output package.
 
+Important limitation:
+- The deterministic local render adapter is not a real scene generator. It exists to validate runtime/output contracts.
+- Placeholder clips now carry explicit metadata and are expected to fail technical review with `placeholder_render_output`.
+- A local stitched mp4 from this fallback path proves orchestration only, not final visual quality.
+
 The fastest regression entry points are:
 
 ```bash

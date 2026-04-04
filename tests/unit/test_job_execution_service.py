@@ -5,7 +5,7 @@ from pathlib import Path
 
 from av_workflow.adapters.render import DeterministicLocalRenderAdapter
 from av_workflow.adapters.tts import DeterministicLocalTTSAdapter
-from av_workflow.contracts.enums import JobStatus, ShotType
+from av_workflow.contracts.enums import JobStatus, ReviewResult, ShotType
 from av_workflow.contracts.models import Job, SourceDocument
 from av_workflow.runtime.workspace import RuntimeWorkspace
 from av_workflow.services.audio_timeline import DeterministicAudioTimelineService
@@ -93,7 +93,7 @@ def test_local_job_execution_service_materializes_runtime_outputs(tmp_path: Path
         ),
     )
 
-    assert result.final_job.status is JobStatus.COMPLETED
+    assert result.final_job.status is JobStatus.MANUAL_HOLD
     assert (runtime_root / "jobs" / "job-001" / "shots" / "shot-001" / "render" / "clip.mp4").is_file()
     assert (runtime_root / "jobs" / "job-001" / "audio" / "tts-shot-001-narration.wav").is_file()
     assert (runtime_root / "jobs" / "job-001" / "audio" / "final-mix.wav").is_file()
@@ -105,6 +105,8 @@ def test_local_job_execution_service_materializes_runtime_outputs(tmp_path: Path
     assert result.asset_manifest.final_video_ref == "asset://runtime/jobs/job-001/output/final.mp4"
     assert result.output_package.final_video_ref == "asset://runtime/jobs/job-001/output/final.mp4"
     assert ffmpeg_executor.calls
+    assert result.review_case.result is ReviewResult.FAIL
+    assert "placeholder_render_output" in result.review_case.reason_codes
 
     with wave.open(str(runtime_root / "jobs" / "job-001" / "audio" / "final-mix.wav"), "rb") as handle:
         assert handle.getframerate() == 24000

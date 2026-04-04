@@ -16,6 +16,7 @@ def evaluate_asset_manifest(
     subtitle_reports: dict[str, dict[str, Any]],
 ) -> ReviewCase:
     reason_codes: list[str] = []
+    placeholder_shot_ids: list[str] = []
 
     final_video_metadata = media_metadata.get(manifest.final_video_ref)
     if final_video_metadata is None:
@@ -52,14 +53,31 @@ def evaluate_asset_manifest(
         if max_line_length > _MAX_SUBTITLE_LINE_LENGTH:
             reason_codes.append("subtitle_line_too_long")
 
+    for shot_asset in manifest.shot_assets:
+        if _is_placeholder_render(shot_asset):
+            placeholder_shot_ids.append(str(shot_asset.get("shot_id", "unknown")))
+
+    if placeholder_shot_ids:
+        reason_codes.append("placeholder_render_output")
+
     is_pass = not reason_codes
     result = ReviewResult.PASS if is_pass else ReviewResult.FAIL
-    recommended_action = "continue" if is_pass else "retry_compose"
+    recommended_action = (
+        "continue" if is_pass else ("manual_hold" if placeholder_shot_ids else "retry_compose")
+    )
     reason_text = (
         "Technical quality checks passed."
         if is_pass
         else f"Technical quality checks failed: {', '.join(sorted(set(reason_codes)))}."
     )
+    fix_hint = None
+    if placeholder_shot_ids:
+        fix_hint = (
+            "Replace placeholder render outputs before delivery. "
+            f"Affected shots: {', '.join(placeholder_shot_ids)}."
+        )
+    elif not is_pass:
+        fix_hint = "Rebuild composition outputs and rerun technical QA."
 
     return ReviewCase(
         review_case_id=f"review-{job.job_id}-technical-v1",
@@ -72,10 +90,22 @@ def evaluate_asset_manifest(
         score=1.0 if is_pass else 0.0,
         reason_codes=sorted(set(reason_codes)),
         reason_text=reason_text,
-        fix_hint=None if is_pass else "Rebuild composition outputs and rerun technical QA.",
+        fix_hint=fix_hint,
         recommended_action=recommended_action,
         review_provider="local-technical-qa",
         provider_version="v1",
         latency_ms=0,
         raw_response_ref=f"raw://technical/{job.job_id}.json",
     )
+
+
+def _is_placeholder_render(shot_asset: dict[str, Any]) -> bool:
+    render_metadata = shot_asset.get("render_metadata")
+    if not isinstance(render_metadata, dict):
+        return False
+    content_source = render_metadata.get("content_source")
+    placeholder_mode = render_metadata.get("placeholder_mode")
+    return content_source == "deterministic_placeholder" or placeholder_mode in {
+        "solid_color_loop",
+        "static_placeholder",
+    }

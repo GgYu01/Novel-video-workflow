@@ -34,6 +34,7 @@ def build_asset_manifest(
                 "scene_id": shot_plan.scene_id,
                 "clip_ref": rendered["clip_ref"],
                 "frame_refs": list(rendered.get("frame_refs", [])),
+                "render_metadata": dict(rendered.get("render_metadata", {})),
             }
         )
         total_duration += shot_plan.duration_target

@@ -23,6 +23,23 @@ class StubRenderAdapter:
         }
 
 
+class PlaceholderRenderAdapter:
+    def submit(self, render_request):
+        return {
+            "render_job_id": render_request.render_job_id,
+            "shot_id": render_request.shot_id,
+            "status": "completed",
+            "clip_ref": f"asset://shots/{render_request.shot_id}.mp4",
+            "frame_refs": [f"asset://shots/{render_request.shot_id}/frame-001.png"],
+            "metadata": {
+                "duration_sec": render_request.requested_duration_sec,
+                "fps": 24,
+                "content_source": "deterministic_placeholder",
+                "placeholder_mode": "solid_color_loop",
+            },
+        }
+
+
 class StubShotPlanner:
     def build_shots(self, source_document, story_id):
         return [
@@ -86,3 +103,29 @@ def test_stage_runner_executes_happy_path_end_to_end() -> None:
     assert result.asset_manifest.final_video_ref == "asset://video/job-001/final.mp4"
     assert result.review_case.recommended_action == "continue"
     assert result.render_results["shot-001"].status.value == "succeeded"
+
+
+def test_stage_runner_stops_on_placeholder_render_review_failure() -> None:
+    job = build_job()
+    raw_text = """
+    Chapter 1: Arrival at Saint Moix Stadium
+    Jose Alemany watched Antonio Asensio celebrate at Saint Moix Stadium.
+    """
+
+    planning_service = DeterministicPlanningService(
+        shot_planner=StubShotPlanner(),
+        story_bible_service=DeterministicStoryBibleService(),
+    )
+    render_service = DeterministicRenderJobService(render_adapter=PlaceholderRenderAdapter())
+    runner = DeterministicStageRunner(
+        workflow_engine=WorkflowEngine(),
+        planning_service=planning_service,
+        audio_timeline_service=DeterministicAudioTimelineService(),
+        render_job_service=render_service,
+    )
+
+    result = runner.run(job=job, raw_text=raw_text)
+
+    assert result.final_job.status is JobStatus.MANUAL_HOLD
+    assert result.review_case.result.value == "fail"
+    assert "placeholder_render_output" in result.review_case.reason_codes

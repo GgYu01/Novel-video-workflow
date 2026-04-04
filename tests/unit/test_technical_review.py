@@ -18,7 +18,7 @@ def build_job() -> Job:
     )
 
 
-def build_manifest() -> AssetManifest:
+def build_manifest(*, render_metadata: dict[str, object] | None = None) -> AssetManifest:
     job = build_job()
     shot_plan = ShotPlan(
         shot_id="shot-001",
@@ -43,6 +43,7 @@ def build_manifest() -> AssetManifest:
             "shot-001": {
                 "clip_ref": "asset://shots/shot-001.mp4",
                 "frame_refs": ["asset://frames/shot-001-001.png"],
+                "render_metadata": render_metadata or {},
             }
         },
         subtitle_refs=["asset://subtitles/final.srt"],
@@ -169,3 +170,39 @@ def test_evaluate_asset_manifest_fails_when_primary_audio_metadata_is_missing() 
 
     assert review.result is ReviewResult.FAIL
     assert "missing_primary_audio_metadata" in review.reason_codes
+
+
+def test_evaluate_asset_manifest_fails_for_placeholder_render_outputs() -> None:
+    job = build_job()
+    manifest = build_manifest(
+        render_metadata={
+            "content_source": "deterministic_placeholder",
+            "placeholder_mode": "solid_color_loop",
+        }
+    )
+
+    review = evaluate_asset_manifest(
+        job=job,
+        manifest=manifest,
+        media_metadata={
+            "asset://video/final.mp4": {
+                "duration_sec": 4.0,
+                "video_streams": [{"width": 1920, "height": 1080}],
+                "audio_streams": [{"sample_rate": 48000}],
+            },
+            "asset://audio/narration.wav": {
+                "duration_sec": 4.0,
+                "audio_streams": [{"sample_rate": 48000}],
+            },
+        },
+        subtitle_reports={
+            "asset://subtitles/final.srt": {
+                "cue_count": 3,
+                "max_line_length": 24,
+            }
+        },
+    )
+
+    assert review.result is ReviewResult.FAIL
+    assert "placeholder_render_output" in review.reason_codes
+    assert review.recommended_action == "manual_hold"

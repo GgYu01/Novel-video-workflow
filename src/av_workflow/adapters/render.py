@@ -83,6 +83,10 @@ class DeterministicLocalRenderAdapter:
                 "fps": self.fps,
                 "output_size": self.output_size,
                 "backend": render_request.backend.value,
+                "content_source": "deterministic_placeholder",
+                "placeholder_mode": "solid_color_loop",
+                "dominant_rgb": list(self._derive_color(render_request)),
+                "frame_count": 1,
             },
         }
 

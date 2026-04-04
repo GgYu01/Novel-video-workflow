@@ -83,3 +83,7 @@ Use this file for dated architectural and operational decisions that should rema
 ### D-020: Package `ffmpeg` inside the API image instead of assuming host binaries
 - Decision: install `ffmpeg` in `build/Dockerfile.api` and treat the container image as the executable runtime boundary for compose/video stitching.
 - Why: both the development container and the target host may differ in host-level media tooling. Packaging `ffmpeg` in the module image removes a hidden host dependency and keeps the execution contract reproducible.
+
+### D-021: Placeholder local renders must fail closed and remain non-deliverable
+- Decision: deterministic local render outputs are execution-contract fixtures only; they must carry explicit placeholder metadata, fail technical review, and leave the workflow in `manual_hold` rather than `completed`.
+- Why: a stitched mp4 with valid streams is not sufficient evidence of usable video quality. The system must never treat placeholder media as a successful deliverable just because the runtime, concat, and audio pipeline executed.
