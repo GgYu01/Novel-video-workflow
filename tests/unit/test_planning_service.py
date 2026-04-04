@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from av_workflow.contracts.enums import MotionTier, ShotType
 from av_workflow.contracts.models import ShotPlanSet, SourceDocument
-from av_workflow.services.planning import DeterministicPlanningService
+from av_workflow.services.planning import DeterministicPlanningService, HeuristicChapterShotPlanner
 
 
 class StubShotPlanner:
@@ -107,3 +107,64 @@ def test_planning_service_groups_shots_into_shot_plan_set() -> None:
     assert shot_plan_set.chapter_id == "ch-1"
     assert shot_plan_set.default_output_preset == "preview_720p24"
     assert shot_plan_set.shots[0].motion_tier is MotionTier.WAN_DYNAMIC
+
+
+def test_heuristic_planner_marks_chinese_action_segments_as_wan_dynamic() -> None:
+    service = DeterministicPlanningService(shot_planner=HeuristicChapterShotPlanner())
+    source = SourceDocument(
+        source_document_id="source-zh-dynamic",
+        job_id="job-zh-dynamic",
+        source_ref="asset://source-zh.txt",
+        title="中文动态片段",
+        language="zh-CN",
+        normalized_text="球迷在球场看台上欢呼，球员带球冲刺并展开追逐。",
+        chapter_documents=[
+            {
+                "chapter_id": "ch-zh-1",
+                "title": "第1章 球场沸腾",
+                "content": "球迷在球场看台上欢呼，球员带球冲刺并展开追逐，整个球场陷入疯狂庆祝。",
+            }
+        ],
+    )
+
+    story_spec = service.build_story_spec(source)
+    shot_plans = service.generate_shot_plans(source, story_spec)
+
+    assert any(shot.motion_tier is MotionTier.WAN_DYNAMIC for shot in shot_plans)
+
+
+def test_heuristic_planner_splits_chinese_sentences_without_whitespace() -> None:
+    service = DeterministicPlanningService(shot_planner=HeuristicChapterShotPlanner())
+    source = SourceDocument(
+        source_document_id="source-zh-static",
+        job_id="job-zh-static",
+        source_ref="asset://source-zh-static.txt",
+        title="中文静态片段",
+        language="zh-CN",
+        normalized_text=(
+            "圣·莫伊斯球场的包厢里很安静。"
+            "安东尼奥·阿森西奥与马特奥·阿莱马尼坐在窗边，低声商量俱乐部下个赛季的安排。"
+            "回到家后，何塞在书桌前整理笔记，慢慢推演马洛卡未来的道路。"
+        ),
+        chapter_documents=[
+            {
+                "chapter_id": "ch-zh-static-1",
+                "title": "第1章 包厢",
+                "content": (
+                    "圣·莫伊斯球场的包厢里很安静。"
+                    "安东尼奥·阿森西奥与马特奥·阿莱马尼坐在窗边，低声商量俱乐部下个赛季的安排。"
+                    "回到家后，何塞在书桌前整理笔记，慢慢推演马洛卡未来的道路。"
+                ),
+            }
+        ],
+    )
+
+    story_spec = service.build_story_spec(source)
+    shot_plans = service.generate_shot_plans(source, story_spec)
+
+    assert [shot.shot_id for shot in shot_plans] == ["shot-001", "shot-002", "shot-003"]
+    assert [shot.narration_text for shot in shot_plans] == [
+        "圣·莫伊斯球场的包厢里很安静。",
+        "安东尼奥·阿森西奥与马特奥·阿莱马尼坐在窗边，低声商量俱乐部下个赛季的安排。",
+        "回到家后，何塞在书桌前整理笔记，慢慢推演马洛卡未来的道路。",
+    ]

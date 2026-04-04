@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Protocol
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,6 +48,23 @@ class StageUpdateRequest(BaseModel):
     current_stage: str | None = None
 
 
+class JobExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    raw_text: str
+
+
+class JobExecuteSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str
+    status: str
+    current_stage: str
+    review_result: str
+    reason_codes: list[str] = Field(default_factory=list)
+    final_video_ref: str | None = None
+
+
 class ArtifactSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -84,6 +103,11 @@ class ShotArtifactUpdateRequest(BaseModel):
 
     clip_ref: str
     frame_refs: list[str] = Field(default_factory=list)
+
+
+class JobExecutionServiceFactory(Protocol):
+    def create(self, *, job_id: str):
+        """Return a job-scoped execution service."""
 
 
 class InMemoryApiStore:
@@ -183,7 +207,11 @@ class InMemoryApiStore:
         return None
 
 
-def build_router(*, store: InMemoryApiStore) -> APIRouter:
+def build_router(
+    *,
+    store: InMemoryApiStore,
+    execution_service_factory: JobExecutionServiceFactory | None = None,
+) -> APIRouter:
     router = APIRouter(prefix="/v1", tags=["workflow"])
 
     @router.post("/jobs", response_model=JobSummary, status_code=status.HTTP_201_CREATED)
@@ -238,6 +266,50 @@ def build_router(*, store: InMemoryApiStore) -> APIRouter:
             current_stage=job.current_stage,
             retry_count=job.retry_count,
             max_auto_retries=job.max_auto_retries,
+        )
+
+    @router.post("/jobs/{job_id}/execute", response_model=JobExecuteSummary)
+    def execute_job(job_id: str, request: JobExecuteRequest) -> JobExecuteSummary:
+        job = store.get_job(job_id)
+        if job is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job_not_found")
+        if execution_service_factory is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="execution_not_configured")
+
+        execution_service = execution_service_factory.create(job_id=job_id)
+        result = execution_service.run(job=job, raw_text=request.raw_text)
+        finalized_job = store.update_job_stage(
+            job_id,
+            result.final_job.status,
+            result.final_job.current_stage,
+        )
+        store.record_artifacts(
+            job_id,
+            subtitle_refs=list(result.asset_manifest.subtitle_refs),
+            audio_refs=list(result.asset_manifest.audio_refs),
+            primary_audio_ref=result.asset_manifest.primary_audio_ref,
+            preview_refs=list(result.asset_manifest.preview_refs),
+            cover_refs=list(result.asset_manifest.cover_refs),
+            final_video_ref=result.asset_manifest.final_video_ref,
+        )
+        for shot_asset in result.asset_manifest.shot_assets:
+            clip_ref = shot_asset.get("clip_ref")
+            if not clip_ref:
+                continue
+            store.record_shot_artifacts(
+                job_id,
+                shot_id=str(shot_asset["shot_id"]),
+                clip_ref=str(clip_ref),
+                frame_refs=[str(item) for item in shot_asset.get("frame_refs", [])],
+            )
+
+        return JobExecuteSummary(
+            job_id=job_id,
+            status=finalized_job.status.value,
+            current_stage=finalized_job.current_stage,
+            review_result=result.review_case.result.value,
+            reason_codes=list(result.review_case.reason_codes),
+            final_video_ref=result.asset_manifest.final_video_ref,
         )
 
     @router.get("/jobs/{job_id}/artifacts", response_model=ArtifactSummary)

@@ -91,3 +91,31 @@ Use this file for dated architectural and operational decisions that should rema
 ### D-022: Real image and Wan providers should enter through API-backed render adapters
 - Decision: the workflow keeps `ShotRenderJob` and `ShotRenderResult` as stable internal contracts, while real image and Wan backends are integrated through endpoint-configured API adapters and a backend-routing adapter.
 - Why: this preserves the current workflow and review contracts, keeps provider-specific HTTP details out of orchestration code, and allows deterministic placeholder fallback, local model APIs, and future cloud fallback to share the same render-job surface.
+
+### D-023: Render backend selection must be explicit in layered config
+- Decision: add `render.mode` as a required layered config field with `deterministic_local` and `routed_api` as the only supported values.
+- Why: silent fallback from real-provider mode to placeholder media is unacceptable. Operators need an explicit switch that keeps contract validation and real-render execution distinct.
+
+### D-024: API job execution should use a job-scoped runtime factory
+- Decision: expose `POST /v1/jobs/{job_id}/execute`, and construct the execution service through a job-scoped factory that resolves layered config, a runtime root, and job-bound TTS/render adapters at request time.
+- Why: the runtime path needs per-job filesystem output and job-bound TTS assets, while the control plane still needs a stable app-level entrypoint. A factory keeps those concerns separated without hard-coding one global execution service instance.
+
+### D-025: Ship dedicated internal renderer services before enabling real local model backends by default
+- Decision: add `av-image-renderer` and `av-wan-renderer` as separate internal worker services, keep the API-facing render contract HTTP-based, and gate the first real image model behind an explicit `sd_cpp` backend mode instead of forcing heavy model pulls into the default module startup path.
+- Why: the system needs a stable routed render topology and user-maintainable configuration before it can safely absorb CPU-heavy GGUF model runtimes. Shipping the worker surfaces first keeps the workflow modular, lets the API switch into routed mode via profile, and preserves a fail-closed placeholder path until real local model assets are deliberately mounted.
+
+### D-026: Profiles must override module defaults in layered config
+- Decision: apply config layers in this order: defaults, modules, profiles, environment overrides, runtime overrides.
+- Why: modules carry reusable defaults, while profiles are operator-facing mode selections such as `routed_api_local`. If profiles load earlier than modules, explicit runtime switches silently fall back to placeholder behavior.
+
+### D-027: Motion-tier inference must recognize Chinese action cues
+- Decision: keep the heuristic planner lightweight, but treat Chinese action and crowd-motion phrases as first-class `wan_dynamic` cues alongside the existing English keywords.
+- Why: the current target workload is Chinese long-form fiction. English-only keyword inference leaves dynamic scenes stuck on the image path and prevents routed Wan validation on real user input.
+
+### D-028: Model the `Z-Image` image backend as a split `stable-diffusion.cpp` contract
+- Decision: keep the `sd_cpp` backend name, but model `Z-Image` with three explicit operator paths: `diffusion_model_path`, `vae_path`, and `llm_path`.
+- Why: the official `stable-diffusion.cpp` `Z-Image` surface is not a single `-m` checkpoint. Treating it as one model file creates a misleading configuration contract that looks complete in env files but cannot actually execute when the backend is enabled.
+
+### D-029: Real render outputs must not auto-complete without explicit semantic review
+- Decision: once the workflow is producing real image or video frames, `completed` must require a real semantic review result rather than treating technical QA as an implicit semantic pass.
+- Why: technical QA only proves codec, duration, subtitle, and placeholder integrity. The first remote `Z-Image` smoke already showed that a visually weak frame can still pass those checks, so auto-completion without semantic review overstates delivery quality.

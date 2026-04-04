@@ -57,7 +57,8 @@ run_rsync() {
     "${delete_flags[@]}"
     --exclude=.git
     --exclude=.venv
-    --exclude=runtime
+    --exclude=/runtime/
+    --exclude=/models/
     --exclude=.env
     --exclude=.env.secrets
     --exclude=__pycache__

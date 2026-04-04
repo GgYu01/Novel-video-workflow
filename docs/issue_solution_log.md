@@ -75,3 +75,57 @@ Use this file to record recurring failures, root cause evidence, fixes, and regr
 - Root cause: `DeterministicLocalRenderAdapter` intentionally wrote a single pure-color `PPM` frame per shot and looped it into `clip.mp4`, but the shot metadata did not mark those outputs as placeholders, `AssetManifest` dropped render provenance, `evaluate_asset_manifest(...)` only validated stream/subtitle structure, and both stage-runner paths advanced to `completed` without actually applying review failure results.
 - Fix: tag deterministic local render outputs with placeholder metadata, propagate per-shot `render_metadata` into `AssetManifest`, fail technical review with `placeholder_render_output`, and route non-passing reviews through `PolicyEngine` so placeholder jobs stop at `manual_hold` instead of `completed`.
 - Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_local_provider_adapters.py tests/unit/test_compose_service.py tests/unit/test_technical_review.py tests/unit/test_stage_runner.py tests/unit/test_job_execution_service.py -q`, then run `PYTHONPATH=src ./.venv/bin/python - <<'PY' ...` against the deterministic runtime and confirm `final_status=manual_hold`.
+
+### API control plane could create jobs but could not actually execute them through layered runtime wiring
+- Symptom: the service could create jobs and expose stage/artifact mutation endpoints, but it still lacked a formal API entrypoint that built a real execution service from layered config and ran the workflow end-to-end.
+- Root cause: runtime execution existed only as directly instantiated Python services in tests and ad hoc scripts, and render backend selection had no explicit config switch between placeholder local rendering and routed provider APIs.
+- Fix: add `render.mode`, introduce a job-scoped execution-service factory under `av_workflow.runtime.bootstrap`, and expose `POST /v1/jobs/{job_id}/execute` so the API can run the workflow and persist resulting stage/artifact views through the same HTTP contract.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_execution_runtime_factory.py tests/integration/test_execute_job_api.py -q`.
+
+### Remote source sync silently skipped `bootstrap.py` even though local tests passed
+- Symptom: the rebuilt remote `av-api` image started and immediately crashed with `ModuleNotFoundError: No module named 'av_workflow.runtime.bootstrap'`, even though the local source tree contained `src/av_workflow/runtime/bootstrap.py` and the local test suite was green.
+- Root cause: `scripts/install_remote_module.sh` used `rsync --exclude=runtime`, which matched the repository root `runtime/` as intended but also matched the source package path `src/av_workflow/runtime/`, so new files under that package were never copied to `/mnt/hdo/infra-core/modules/av-workflow`.
+- Fix: narrow the rsync filter to `--exclude=/runtime/`, add a regression test that rejects the broad `--exclude=runtime` pattern, resync the module, and rebuild the remote image.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_module_packaging.py -q`, then confirm `ls /mnt/hdo/infra-core/modules/av-workflow/src/av_workflow/runtime/bootstrap.py` exists on the remote host before rebuilding.
+
+### Routed profile switch could be silently cancelled by module defaults
+- Symptom: the remote `.env` set `AV_WORKFLOW_CONFIG_PROFILE=routed_api_local`, `docker compose config` showed the variable, but the running API still loaded `render.mode=deterministic_local`.
+- Root cause: `ConfigLoader.load(...)` merged `profiles/<name>.yaml` before `modules/render.yaml`, so the module default rewrote the operator-selected routed profile back to placeholder mode.
+- Fix: change the merge order to `defaults -> modules -> profiles -> env -> runtime`, and add a regression test that asserts `routed_api_local` overrides `modules/render.yaml`.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_config_loader.py -q`, then verify `docker exec av-workflow-av-api-1 python -c \"from av_workflow.runtime.bootstrap import build_job_execution_service_factory_from_env; print(build_job_execution_service_factory_from_env().config.render.mode)\"` prints `routed_api`.
+
+### Chinese novel scenes could never trigger `wan_dynamic`
+- Symptom: real execution against `xiaoshuo.txt` routed only to `av-image-renderer`, even though the source text included crowd celebration and action-heavy stadium scenes.
+- Root cause: `_infer_motion_tier(...)` only matched English dynamic keywords such as `crowd`, `celebration`, and `chase`, so Chinese narration always degraded to `limited_motion`.
+- Fix: extend heuristic motion inference with Chinese action and crowd-motion cues such as `欢呼`, `庆祝`, `追逐`, and `冲刺`, and add a regression test that requires Chinese action text to yield at least one `wan_dynamic` shot.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_planning_service.py -q`, then execute a Chinese excerpt through `/v1/jobs/{job_id}/execute` and confirm `av-wan-renderer` logs `POST /v1/render/video`.
+
+### The first `sd_cpp` image backend surface used the wrong `Z-Image` command contract
+- Symptom: the repository exposed an opt-in `sd_cpp` backend, but its command builder treated the `Z-Image` GGUF as a single `-m` model, treated the Qwen model as `--diffusion-model`, and omitted the required `--vae` and `--llm` flags.
+- Root cause: the initial implementation copied a generic single-model `stable-diffusion.cpp` assumption instead of the official split-model `Z-Image` invocation contract.
+- Fix: redefine the backend config around `diffusion_model_path`, `vae_path`, and `llm_path`, build the command with `--diffusion-model`, `--vae`, `--llm`, `-o`, `-W`, `-H`, and `-p`, and update `.env.example`, `README.md`, and backend tests to match.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_render_service_backends.py -q`.
+
+### Remote real-image provisioning was blocked by host permissions and Hugging Face reachability
+- Symptom: the remote module had a mounted `models/` directory, but `gaoyx` could not write to it, and direct access to `huggingface.co` failed even though GitHub and `hf-mirror.com` were reachable.
+- Root cause: the existing renderer container created `/mnt/hdo/infra-core/modules/av-workflow/models` as `root:root`, and the target host network could not connect to `huggingface.co:443`.
+- Fix: add `scripts/provision_z_image_backend.sh` as the canonical provisioning entrypoint. The script uses the already-running renderer container to repair ownership when needed, downloads the Linux `stable-diffusion.cpp` binary from GitHub Releases, downloads model assets from `hf-mirror.com`, and updates `.env` to the normalized `sd_cpp` paths.
+- Regression check: run `bash -n scripts/provision_z_image_backend.sh`, `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_module_packaging.py -q`, then run `DRY_RUN=0 ./scripts/provision_z_image_backend.sh` inside the module directory on the target host.
+
+### Remote module sync must treat `models/` as runtime state, not source payload
+- Symptom: after adding the provisioning script, a local dry-run created an ignored `models/` tree under the repository root, and the next `scripts/install_remote_module.sh` run failed with `rsync` permission errors against `/mnt/hdo/infra-core/modules/av-workflow/models`.
+- Root cause: `install_remote_module.sh` excluded `/runtime/` but not `/models/`, so local model-cache directories were still treated as syncable source content.
+- Fix: exclude `/models/` from remote module sync the same way `/runtime/` is excluded, and add a regression test that requires the anchored `--exclude=/models/` rule.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_module_packaging.py -q`, then rerun `REMOTE_PASSWORD=*** DRY_RUN=0 ./scripts/install_remote_module.sh`.
+
+### The original VAE download source returned `403 Forbidden` through `hf-mirror`
+- Symptom: `scripts/provision_z_image_backend.sh` successfully downloaded the Linux `stable-diffusion.cpp` release and `z-image-turbo-Q2_K.gguf`, but failed immediately when requesting `https://hf-mirror.com/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors`.
+- Root cause: the target host could reach `hf-mirror.com`, but that particular mirrored `black-forest-labs/FLUX.1-schnell` file route returned `403`, so the provisioning script stopped before downloading Qwen and before updating `.env`.
+- Fix: switch the default `VAE_URL` to a public mirror repo that serves the same `ae.safetensors` artifact through `hf-mirror`: `receptektas/black-forest-labs-ae_safetensors`.
+- Regression check: run `PYTHONPATH=src ./.venv/bin/pytest tests/unit/test_module_packaging.py -q`, then rerun `DRY_RUN=0 ./scripts/provision_z_image_backend.sh` on the remote host.
+
+### Real image outputs can still bypass semantic QA and auto-complete
+- Symptom: remote `job-0001` completed with `review_result=pass` after generating real `Z-Image` PNG frames, but local visual inspection of the returned artifacts showed at least one shot (`shot-001`) was still noisy and semantically weak.
+- Root cause: `evaluate_asset_manifest(...)` validates only stream/subtitle structure and placeholder provenance, while `DeterministicLocalJobExecutionService.run(...)` immediately calls `mark_semantic_review_passed(...)` after a technical pass without executing a real semantic image-review stage.
+- Planned fix: add an explicit semantic image-review service for real-render jobs and fail closed when that review is missing or non-passing, instead of synthesizing semantic approval from technical approval.
+- Pending regression check: rerun the remote calm-smoke workflow after semantic review integration and confirm weak real-image outputs no longer reach `completed` without an explicit semantic pass.

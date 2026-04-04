@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -36,6 +38,7 @@ class RenderEndpointConfig(BaseModel):
 class RenderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    mode: Literal["deterministic_local", "routed_api"]
     default_output_preset: str
     allow_wan_for_dynamic: bool
     image_endpoint: RenderEndpointConfig

@@ -32,11 +32,12 @@ class ConfigLoader:
 
         self._merge_file(data, self.config_root / "defaults/system.yaml")
 
-        if profile_name:
-            self._merge_file(data, self.config_root / f"profiles/{profile_name}.yaml")
-
         for module_name in module_names or []:
             self._merge_file(data, self.config_root / f"modules/{module_name}.yaml")
+
+        if profile_name:
+            # Profiles are operator-facing switches and must override module defaults.
+            self._merge_file(data, self.config_root / f"profiles/{profile_name}.yaml")
 
         data = self._deep_merge(data, env_overrides or {})
         self._validate_runtime_overrides(runtime_overrides or {})

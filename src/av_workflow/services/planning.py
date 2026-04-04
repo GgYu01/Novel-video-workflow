@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import re
 from typing import Protocol
 
-from av_workflow.contracts.enums import MotionTier
+from av_workflow.contracts.enums import MotionTier, ShotType
 from av_workflow.contracts.models import ShotPlan, ShotPlanSet, SourceDocument, StorySpec
 from av_workflow.services.story_bible import DeterministicStoryBibleService
 
@@ -14,6 +15,44 @@ class ShotPlanner(Protocol):
         story_id: str,
     ) -> list[dict[str, object]]:
         """Return validated shot payloads for the current source document."""
+
+
+class HeuristicChapterShotPlanner:
+    def __init__(self, *, max_shots_per_chapter: int = 3) -> None:
+        self.max_shots_per_chapter = max_shots_per_chapter
+
+    def build_shots(self, source_document: SourceDocument, story_id: str) -> list[dict[str, object]]:
+        shots: list[dict[str, object]] = []
+        global_index = 1
+
+        for chapter in source_document.chapter_documents:
+            segments = _segment_chapter_text(chapter["content"])[: self.max_shots_per_chapter]
+            if not segments:
+                segments = [chapter["title"]]
+
+            for chapter_index, segment in enumerate(segments, start=1):
+                shot_id = f"shot-{global_index:03d}"
+                global_index += 1
+                shots.append(
+                    {
+                        "shot_id": shot_id,
+                        "chapter_id": chapter["chapter_id"],
+                        "scene_id": f"scene-{chapter['chapter_id']}",
+                        "duration_target": _estimate_duration(segment),
+                        "shot_type": ShotType.WIDE if chapter_index == 1 else ShotType.MEDIUM,
+                        "camera_instruction": _camera_instruction(chapter_index),
+                        "subject_instruction": _subject_instruction(segment),
+                        "environment_instruction": _environment_instruction(chapter["title"]),
+                        "narration_text": segment,
+                        "dialogue_lines": _extract_dialogue_lines(segment),
+                        "subtitle_source": "narration",
+                        "render_requirements": {"aspect_ratio": "16:9", "style": "cinematic_realism"},
+                        "review_targets": {"must_match": _keyword_targets(segment)},
+                        "fallback_strategy": {"retry_scope": "shot"},
+                    }
+                )
+
+        return shots
 
 
 class DeterministicPlanningService:
@@ -127,7 +166,72 @@ def _infer_motion_tier(raw_shot: dict[str, object]) -> MotionTier:
         "running",
         "surge",
         "explosion",
+        "欢呼",
+        "庆祝",
+        "狂欢",
+        "人群",
+        "追逐",
+        "追赶",
+        "冲刺",
+        "奔跑",
+        "狂奔",
+        "打斗",
+        "爆炸",
+        "挥舞",
+        "扑向",
     )
     if any(keyword in searchable_text for keyword in dynamic_keywords):
         return MotionTier.WAN_DYNAMIC
     return MotionTier.LIMITED_MOTION
+
+
+def _segment_chapter_text(content: str) -> list[str]:
+    collapsed = " ".join(part.strip() for part in content.splitlines() if part.strip())
+    if not collapsed:
+        return []
+    sentences = [
+        sentence.strip()
+        for sentence in re.findall(r".+?(?:[。！？!?\.](?=\s|$)|[。！？!?\.])|.+$", collapsed)
+        if sentence.strip()
+    ]
+    return sentences or [collapsed]
+
+
+def _estimate_duration(segment: str) -> float:
+    return max(3.0, min(6.0, round(len(segment) / 28.0, 1)))
+
+
+def _camera_instruction(index: int) -> str:
+    if index == 1:
+        return "establish the location with stable cinematic coverage"
+    return "hold a steady medium framing on the primary action"
+
+
+def _subject_instruction(segment: str) -> str:
+    return segment[:180]
+
+
+def _environment_instruction(chapter_title: str) -> str:
+    cleaned = chapter_title.split(":", 1)[-1].strip()
+    return cleaned or "story location inferred from chapter context"
+
+
+def _extract_dialogue_lines(segment: str) -> list[str]:
+    if ":" not in segment:
+        return []
+    speaker, text = segment.split(":", 1)
+    if not speaker.strip() or not text.strip():
+        return []
+    return [f"{speaker.strip()}: {text.strip()}"]
+
+
+def _keyword_targets(segment: str) -> list[str]:
+    tokens = re.findall(r"[A-Za-z][A-Za-z'-]+", segment)
+    unique_tokens: list[str] = []
+    for token in tokens:
+        lowered = token.lower()
+        if lowered not in unique_tokens:
+            unique_tokens.append(lowered)
+        if len(unique_tokens) == 4:
+            break
+    return unique_tokens

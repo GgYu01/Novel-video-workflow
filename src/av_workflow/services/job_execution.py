@@ -46,7 +46,7 @@ class DeterministicLocalJobExecutionService:
         )
 
     def run(self, *, job: Job, raw_text: str) -> StageRunResult:
-        self.workspace.ensure_job_tree(job.job_id)
+        self.workspace.reset_job_tree(job.job_id)
 
         source_document = normalize_source(job, raw_text)
         self._write_model(job.job_id, "source/source_document.json", source_document)
@@ -136,7 +136,10 @@ class DeterministicLocalJobExecutionService:
 
         render_ready_job = self.stage_runner.mark_render_ready(render_requested_job)
         audio_ready_job = self.stage_runner.mark_audio_ready(render_ready_job)
-        preview_ref, cover_ref = self._materialize_cover_assets(job_id=job.job_id, shot_plan_set=shot_plan_set.shots)
+        preview_ref, cover_ref = self._materialize_cover_assets(
+            job_id=job.job_id,
+            shot_plan_set=shot_plan_set.shots,
+        )
 
         asset_manifest = build_asset_manifest(
             job=audio_ready_job,
@@ -233,15 +236,28 @@ class DeterministicLocalJobExecutionService:
 
     def _materialize_cover_assets(self, *, job_id: str, shot_plan_set: list[ShotPlan]) -> tuple[str, str]:
         first_shot_id = shot_plan_set[0].shot_id
-        first_frame = self.workspace.shot_root(job_id, first_shot_id) / "render" / "frame-001.ppm"
-        preview_path = self.workspace.output_dir(job_id) / "preview.ppm"
-        cover_path = self.workspace.output_dir(job_id) / "cover.ppm"
+        first_frame = self._resolve_cover_source_frame(job_id=job_id, first_shot_id=first_shot_id)
+        preview_name = f"preview{first_frame.suffix or '.png'}"
+        cover_name = f"cover{first_frame.suffix or '.png'}"
+        preview_path = self.workspace.output_dir(job_id) / preview_name
+        cover_path = self.workspace.output_dir(job_id) / cover_name
         shutil.copyfile(first_frame, preview_path)
         shutil.copyfile(first_frame, cover_path)
         return (
-            self.workspace.asset_ref(job_id, "output", "preview.ppm"),
-            self.workspace.asset_ref(job_id, "output", "cover.ppm"),
+            self.workspace.asset_ref(job_id, "output", preview_name),
+            self.workspace.asset_ref(job_id, "output", cover_name),
         )
+
+    def _resolve_cover_source_frame(self, *, job_id: str, first_shot_id: str) -> Path:
+        render_dir = self.workspace.shot_root(job_id, first_shot_id) / "render"
+        candidate_paths = sorted(
+            path
+            for path in render_dir.iterdir()
+            if path.is_file() and path.name.startswith("frame-")
+        )
+        if not candidate_paths:
+            raise FileNotFoundError(f"cover_source_frame_missing: {render_dir}")
+        return candidate_paths[0]
 
     def _build_review_case(
         self,

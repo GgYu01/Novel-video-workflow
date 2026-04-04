@@ -1,6 +1,8 @@
 ARG PYTHON_BASE_IMAGE=python:3.12-slim
 FROM ${PYTHON_BASE_IMAGE}
 
+ARG APT_MIRROR=""
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
@@ -9,7 +11,15 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-RUN apt-get update \
+RUN if [ -n "${APT_MIRROR}" ]; then \
+      find /etc/apt -type f \( -name '*.sources' -o -name '*.list' \) -print0 \
+        | xargs -0 sed -i \
+          -e "s#http://deb.debian.org#${APT_MIRROR%/}#g" \
+          -e "s#https://deb.debian.org#${APT_MIRROR%/}#g" \
+          -e "s#http://security.debian.org#${APT_MIRROR%/}#g" \
+          -e "s#https://security.debian.org#${APT_MIRROR%/}#g"; \
+    fi \
+    && apt-get update \
     && apt-get install --yes --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 

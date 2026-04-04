@@ -1,5 +1,6 @@
 # Runtime state
 runtime/
+models/
 !src/av_workflow/runtime/
 !src/av_workflow/runtime/*.py
 *.log

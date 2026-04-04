@@ -48,6 +48,74 @@ class StubShotPlanner:
         ]
 
 
+class StaticShotPlanner:
+    def build_shots(self, source_document: SourceDocument, story_id: str) -> list[dict[str, object]]:
+        first_chapter = source_document.chapter_documents[0]
+        return [
+            {
+                "shot_id": "shot-001",
+                "chapter_id": first_chapter["chapter_id"],
+                "scene_id": "scene-1",
+                "duration_target": 3.0,
+                "shot_type": ShotType.MEDIUM,
+                "camera_instruction": "steady eye-level framing",
+                "subject_instruction": "Jose Alemany studies the empty stadium box",
+                "environment_instruction": "quiet Saint Moix Stadium box",
+                "narration_text": "Jose studied the empty stadium box.",
+                "dialogue_lines": [],
+                "subtitle_source": "narration",
+                "render_requirements": {"aspect_ratio": "16:9"},
+                "review_targets": {"must_match": ["jose", "stadium"]},
+                "fallback_strategy": {"retry_scope": "shot"},
+            }
+        ]
+
+
+class PngRenderAdapter:
+    def __init__(self, workspace: RuntimeWorkspace) -> None:
+        self.workspace = workspace
+
+    def submit(self, render_request) -> dict[str, object]:
+        render_dir = self.workspace.shot_root(render_request.job_id, render_request.shot_id) / "render"
+        render_dir.mkdir(parents=True, exist_ok=True)
+        frame_path = render_dir / "frame-001.png"
+        clip_path = render_dir / "clip.mp4"
+        frame_path.write_bytes(b"fake-png")
+        clip_path.write_bytes(b"fake-clip")
+        return {
+            "render_job_id": render_request.render_job_id,
+            "shot_id": render_request.shot_id,
+            "status": "completed",
+            "clip_ref": self.workspace.asset_ref(
+                render_request.job_id,
+                "shots",
+                render_request.shot_id,
+                "render",
+                "clip.mp4",
+            ),
+            "frame_refs": [
+                self.workspace.asset_ref(
+                    render_request.job_id,
+                    "shots",
+                    render_request.shot_id,
+                    "render",
+                    "frame-001.png",
+                )
+            ],
+            "clip_path": str(clip_path),
+            "frame_paths": [str(frame_path)],
+            "metadata": {
+                "duration_sec": render_request.requested_duration_sec,
+                "fps": 24,
+                "output_size": [640, 384],
+                "backend": render_request.backend.value,
+                "content_source": "image_model",
+                "placeholder_mode": None,
+                "frame_count": 1,
+            },
+        }
+
+
 def build_job() -> Job:
     return Job(
         job_id="job-001",
@@ -111,3 +179,80 @@ def test_local_job_execution_service_materializes_runtime_outputs(tmp_path: Path
     with wave.open(str(runtime_root / "jobs" / "job-001" / "audio" / "final-mix.wav"), "rb") as handle:
         assert handle.getframerate() == 24000
         assert handle.getnframes() == 96000
+
+
+def test_local_job_execution_service_clears_stale_runtime_tree_before_run(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "runtime"
+    workspace = RuntimeWorkspace(root_dir=runtime_root)
+    ffmpeg_executor = RecordingFfmpegExecutor()
+
+    render_adapter = DeterministicLocalRenderAdapter(
+        workspace=workspace,
+        ffmpeg_executor=ffmpeg_executor,
+    )
+    render_service = DeterministicRenderJobService(render_adapter=render_adapter)
+    planning_service = DeterministicPlanningService(
+        shot_planner=StubShotPlanner(),
+        story_bible_service=DeterministicStoryBibleService(),
+    )
+    audio_service = DeterministicAudioTimelineService(
+        tts_adapter=DeterministicLocalTTSAdapter(workspace=workspace, job_id="job-001")
+    )
+    execution_service = DeterministicLocalJobExecutionService(
+        runtime_root=runtime_root,
+        planning_service=planning_service,
+        render_job_service=render_service,
+        audio_timeline_service=audio_service,
+        ffmpeg_executor=ffmpeg_executor,
+    )
+
+    stale_subtitle = workspace.write_text_artifact("job-001", "subtitles/stale.srt", "stale")
+    stale_render = workspace.write_text_artifact("job-001", "shots/shot-999/render/frame-001.ppm", "stale")
+    assert stale_subtitle.is_file()
+    assert stale_render.is_file()
+
+    execution_service.run(
+        job=build_job(),
+        raw_text=(
+            "Chapter 1: Arrival at Saint Moix Stadium\n"
+            "Jose Alemany watched Antonio Asensio celebrate at Saint Moix Stadium."
+        ),
+    )
+
+    assert not stale_subtitle.exists()
+    assert not stale_render.exists()
+
+
+def test_local_job_execution_service_uses_real_frame_suffix_for_preview_assets(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "runtime"
+    workspace = RuntimeWorkspace(root_dir=runtime_root)
+    ffmpeg_executor = RecordingFfmpegExecutor()
+
+    render_service = DeterministicRenderJobService(render_adapter=PngRenderAdapter(workspace))
+    planning_service = DeterministicPlanningService(
+        shot_planner=StaticShotPlanner(),
+        story_bible_service=DeterministicStoryBibleService(),
+    )
+    audio_service = DeterministicAudioTimelineService(
+        tts_adapter=DeterministicLocalTTSAdapter(workspace=workspace, job_id="job-001")
+    )
+    execution_service = DeterministicLocalJobExecutionService(
+        runtime_root=runtime_root,
+        planning_service=planning_service,
+        render_job_service=render_service,
+        audio_timeline_service=audio_service,
+        ffmpeg_executor=ffmpeg_executor,
+    )
+
+    result = execution_service.run(
+        job=build_job(),
+        raw_text=(
+            "Chapter 1: Quiet Box\n"
+            "Jose studied the empty stadium box."
+        ),
+    )
+
+    assert result.asset_manifest.preview_refs == ["asset://runtime/jobs/job-001/output/preview.png"]
+    assert result.asset_manifest.cover_refs == ["asset://runtime/jobs/job-001/output/cover.png"]
+    assert (runtime_root / "jobs" / "job-001" / "output" / "preview.png").is_file()
+    assert (runtime_root / "jobs" / "job-001" / "output" / "cover.png").is_file()

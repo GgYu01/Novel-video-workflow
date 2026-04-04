@@ -7,6 +7,7 @@ services:
       dockerfile: ./build/Dockerfile.api
       args:
         PYTHON_BASE_IMAGE: ${AV_WORKFLOW_PYTHON_BASE_IMAGE:-python:3.12-slim}
+        APT_MIRROR: ${AV_WORKFLOW_APT_MIRROR:-}
     image: av-workflow-api:${AV_WORKFLOW_IMAGE_TAG:-latest}
     env_file:
       - ./.env
@@ -42,6 +43,96 @@ services:
     networks:
       - av_workflow_net
       - infra_gateway_net
+
+  av-image-renderer:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile.api
+      args:
+        PYTHON_BASE_IMAGE: ${AV_WORKFLOW_PYTHON_BASE_IMAGE:-python:3.12-slim}
+        APT_MIRROR: ${AV_WORKFLOW_APT_MIRROR:-}
+    image: av-workflow-renderer:${AV_WORKFLOW_IMAGE_TAG:-latest}
+    command: >-
+      sh -c "uvicorn av_workflow.render_service.app:app --host 0.0.0.0 --port ${AV_WORKFLOW_IMAGE_RENDERER_PORT:-8091}"
+    env_file:
+      - ./.env
+      - ./.env.secrets
+    restart: unless-stopped
+    environment:
+      PYTHONPATH: /app/src
+      TZ: ${TZ:-Asia/Shanghai}
+      AV_WORKFLOW_RENDERER_ROLE: image
+      AV_WORKFLOW_RUNTIME_ROOT: /app/runtime
+      AV_WORKFLOW_IMAGE_BACKEND_KIND: ${AV_WORKFLOW_IMAGE_BACKEND_KIND:-placeholder}
+      AV_WORKFLOW_IMAGE_OUTPUT_WIDTH: ${AV_WORKFLOW_IMAGE_OUTPUT_WIDTH:-1280}
+      AV_WORKFLOW_IMAGE_OUTPUT_HEIGHT: ${AV_WORKFLOW_IMAGE_OUTPUT_HEIGHT:-720}
+      AV_WORKFLOW_IMAGE_OUTPUT_FPS: ${AV_WORKFLOW_IMAGE_OUTPUT_FPS:-24}
+      AV_WORKFLOW_SD_CPP_BIN: ${AV_WORKFLOW_SD_CPP_BIN:-}
+      AV_WORKFLOW_Z_IMAGE_DIFFUSION_MODEL_PATH: ${AV_WORKFLOW_Z_IMAGE_DIFFUSION_MODEL_PATH:-}
+      AV_WORKFLOW_Z_IMAGE_VAE_PATH: ${AV_WORKFLOW_Z_IMAGE_VAE_PATH:-}
+      AV_WORKFLOW_Z_IMAGE_LLM_PATH: ${AV_WORKFLOW_Z_IMAGE_LLM_PATH:-}
+      AV_WORKFLOW_Z_IMAGE_STEPS: ${AV_WORKFLOW_Z_IMAGE_STEPS:-4}
+      AV_WORKFLOW_Z_IMAGE_CFG_SCALE: ${AV_WORKFLOW_Z_IMAGE_CFG_SCALE:-1.0}
+      AV_WORKFLOW_Z_IMAGE_SAMPLING_METHOD: ${AV_WORKFLOW_Z_IMAGE_SAMPLING_METHOD:-euler}
+      AV_WORKFLOW_Z_IMAGE_EXTRA_ARGS: ${AV_WORKFLOW_Z_IMAGE_EXTRA_ARGS:-}
+    volumes:
+      - ./runtime:/app/runtime
+      - ${AV_WORKFLOW_MODELS_ROOT:-./models}:/models
+    expose:
+      - "${AV_WORKFLOW_IMAGE_RENDERER_PORT:-8091}"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:${AV_WORKFLOW_IMAGE_RENDERER_PORT:-8091}/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - av_workflow_net
+
+  av-wan-renderer:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile.api
+      args:
+        PYTHON_BASE_IMAGE: ${AV_WORKFLOW_PYTHON_BASE_IMAGE:-python:3.12-slim}
+        APT_MIRROR: ${AV_WORKFLOW_APT_MIRROR:-}
+    image: av-workflow-renderer:${AV_WORKFLOW_IMAGE_TAG:-latest}
+    command: >-
+      sh -c "uvicorn av_workflow.render_service.app:app --host 0.0.0.0 --port ${AV_WORKFLOW_WAN_RENDERER_PORT:-8092}"
+    env_file:
+      - ./.env
+      - ./.env.secrets
+    restart: unless-stopped
+    environment:
+      PYTHONPATH: /app/src
+      TZ: ${TZ:-Asia/Shanghai}
+      AV_WORKFLOW_RENDERER_ROLE: wan
+      AV_WORKFLOW_RUNTIME_ROOT: /app/runtime
+      AV_WORKFLOW_WAN_BACKEND_KIND: ${AV_WORKFLOW_WAN_BACKEND_KIND:-placeholder}
+      AV_WORKFLOW_WAN_OUTPUT_WIDTH: ${AV_WORKFLOW_WAN_OUTPUT_WIDTH:-1280}
+      AV_WORKFLOW_WAN_OUTPUT_HEIGHT: ${AV_WORKFLOW_WAN_OUTPUT_HEIGHT:-720}
+      AV_WORKFLOW_WAN_OUTPUT_FPS: ${AV_WORKFLOW_WAN_OUTPUT_FPS:-24}
+    volumes:
+      - ./runtime:/app/runtime
+      - ${AV_WORKFLOW_MODELS_ROOT:-./models}:/models
+    expose:
+      - "${AV_WORKFLOW_WAN_RENDERER_PORT:-8092}"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          python -c "import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:${AV_WORKFLOW_WAN_RENDERER_PORT:-8092}/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - av_workflow_net
 
 networks:
   av_workflow_net:

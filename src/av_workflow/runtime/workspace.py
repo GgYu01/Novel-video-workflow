@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 
@@ -38,6 +39,12 @@ class RuntimeWorkspace:
         ):
             path.mkdir(parents=True, exist_ok=True)
         return job_root
+
+    def reset_job_tree(self, job_id: str) -> Path:
+        job_root = self.job_root(job_id)
+        if job_root.exists():
+            shutil.rmtree(job_root)
+        return self.ensure_job_tree(job_id)
 
     def write_text_artifact(self, job_id: str, relative_path: str, text: str) -> Path:
         target = self.job_root(job_id) / relative_path
