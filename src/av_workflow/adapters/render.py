@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.request import Request, urlopen
 
 from av_workflow.contracts.enums import MotionTier, RenderBackend, RenderJobStatus
 from av_workflow.contracts.models import ShotPlan, ShotRenderJob, ShotRenderResult
@@ -13,6 +15,71 @@ from av_workflow.runtime.workspace import RuntimeWorkspace
 class RenderAdapter(Protocol):
     def submit(self, render_request: ShotRenderJob) -> dict[str, Any]:
         """Submit a render request and return provider-normalized status data."""
+
+
+class JsonTransport(Protocol):
+    def post_json(self, url: str, payload: dict[str, object], *, timeout_sec: float) -> dict[str, object]:
+        """Send a JSON request and return a decoded JSON payload."""
+
+
+class UrllibJsonTransport:
+    def post_json(self, url: str, payload: dict[str, object], *, timeout_sec: float) -> dict[str, object]:
+        request = Request(
+            url=url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request, timeout=timeout_sec) as response:
+            body = response.read().decode("utf-8")
+        decoded = json.loads(body)
+        return decoded if isinstance(decoded, dict) else {"status": "failed", "raw_response": decoded}
+
+
+class ApiRenderBackendAdapter:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        submit_path: str,
+        timeout_sec: float,
+        transport: JsonTransport | None = None,
+    ) -> None:
+        self.base_url = base_url
+        self.submit_path = submit_path
+        self.timeout_sec = timeout_sec
+        self.transport = transport or UrllibJsonTransport()
+
+    def submit(self, render_request: ShotRenderJob) -> dict[str, object]:
+        payload = {
+            "render_job_id": render_request.render_job_id,
+            "job_id": render_request.job_id,
+            "shot_id": render_request.shot_id,
+            "backend": render_request.backend.value,
+            "motion_tier": render_request.motion_tier.value,
+            "prompt_bundle": render_request.prompt_bundle,
+            "source_asset_refs": list(render_request.source_asset_refs),
+            "requested_duration_sec": render_request.requested_duration_sec,
+        }
+        return self.transport.post_json(
+            self._build_submit_url(),
+            payload,
+            timeout_sec=self.timeout_sec,
+        )
+
+    def _build_submit_url(self) -> str:
+        return f"{self.base_url.rstrip('/')}/{self.submit_path.lstrip('/')}"
+
+
+class RoutingRenderAdapter:
+    def __init__(self, *, image_adapter: RenderAdapter, wan_adapter: RenderAdapter) -> None:
+        self.image_adapter = image_adapter
+        self.wan_adapter = wan_adapter
+
+    def submit(self, render_request: ShotRenderJob) -> dict[str, Any]:
+        if render_request.backend is RenderBackend.WAN:
+            return self.wan_adapter.submit(render_request)
+        return self.image_adapter.submit(render_request)
 
 
 class DeterministicLocalRenderAdapter:
@@ -139,6 +206,7 @@ def normalize_render_status(provider_status: str) -> RenderJobStatus:
 
 
 def normalize_render_result(payload: dict[str, Any]) -> ShotRenderResult:
+    metadata = payload.get("metadata") or {}
     return ShotRenderResult(
         render_job_id=str(payload["render_job_id"]),
         shot_id=str(payload["shot_id"]),
@@ -147,6 +215,6 @@ def normalize_render_result(payload: dict[str, Any]) -> ShotRenderResult:
         clip_path=payload.get("clip_path"),
         frame_refs=list(payload.get("frame_refs", [])),
         frame_paths=list(payload.get("frame_paths", [])),
-        metadata=dict(payload.get("metadata", {})),
+        metadata=dict(metadata),
         error_code=payload.get("error_code"),
     )

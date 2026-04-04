@@ -1,5 +1,9 @@
 render:
   default_output_preset: preview_720p24
   allow_wan_for_dynamic: true
+  image_endpoint:
+    base_url: http://av-image-renderer:8091
+  wan_endpoint:
+    timeout_sec: 180.0
 agents:
   max_parallel_proposals: 4

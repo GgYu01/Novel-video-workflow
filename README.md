@@ -57,6 +57,17 @@ Important limitation:
 - Placeholder clips now carry explicit metadata and are expected to fail technical review with `placeholder_render_output`.
 - A local stitched mp4 from this fallback path proves orchestration only, not final visual quality.
 
+## Render Backend Replacement Slice
+The repository now includes the first real-provider replacement surface for rendering:
+
+- `RenderConfig.image_endpoint` and `RenderConfig.wan_endpoint` define the internal image and Wan API endpoints.
+- `ApiRenderBackendAdapter` sends normalized render jobs to provider APIs.
+- `RoutingRenderAdapter` dispatches `image` and `wan` jobs to different backends without changing workflow contracts.
+
+Current limitation:
+- These adapters prepare the real integration surface, but the repository still does not ship a local image-model container or a local Wan-model container.
+- Until those services are deployed and wired into runtime bootstrap, deterministic placeholder rendering remains the only built-in execution fallback.
+
 The fastest regression entry points are:
 
 ```bash

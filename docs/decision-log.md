@@ -87,3 +87,7 @@ Use this file for dated architectural and operational decisions that should rema
 ### D-021: Placeholder local renders must fail closed and remain non-deliverable
 - Decision: deterministic local render outputs are execution-contract fixtures only; they must carry explicit placeholder metadata, fail technical review, and leave the workflow in `manual_hold` rather than `completed`.
 - Why: a stitched mp4 with valid streams is not sufficient evidence of usable video quality. The system must never treat placeholder media as a successful deliverable just because the runtime, concat, and audio pipeline executed.
+
+### D-022: Real image and Wan providers should enter through API-backed render adapters
+- Decision: the workflow keeps `ShotRenderJob` and `ShotRenderResult` as stable internal contracts, while real image and Wan backends are integrated through endpoint-configured API adapters and a backend-routing adapter.
+- Why: this preserves the current workflow and review contracts, keeps provider-specific HTTP details out of orchestration code, and allows deterministic placeholder fallback, local model APIs, and future cloud fallback to share the same render-job surface.

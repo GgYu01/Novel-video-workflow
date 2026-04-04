@@ -25,11 +25,21 @@ class AdapterConfig(BaseModel):
     wan_provider: str
 
 
+class RenderEndpointConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    base_url: str
+    submit_path: str
+    timeout_sec: float = Field(gt=0.0)
+
+
 class RenderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     default_output_preset: str
     allow_wan_for_dynamic: bool
+    image_endpoint: RenderEndpointConfig
+    wan_endpoint: RenderEndpointConfig
 
 
 class AudioConfig(BaseModel):

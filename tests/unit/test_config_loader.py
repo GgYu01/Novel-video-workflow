@@ -31,6 +31,14 @@ def test_config_loader_merges_layers_with_expected_precedence(tmp_path: Path) ->
         render:
           default_output_preset: preview_720p24
           allow_wan_for_dynamic: true
+          image_endpoint:
+            base_url: http://image-default.internal
+            submit_path: /v1/render/image
+            timeout_sec: 20.0
+          wan_endpoint:
+            base_url: http://wan-default.internal
+            submit_path: /v1/render/video
+            timeout_sec: 90.0
         audio:
           narrator_voice_id: narrator.zh_default
           subtitle_source_mode: tts_durations
@@ -67,6 +75,8 @@ def test_config_loader_merges_layers_with_expected_precedence(tmp_path: Path) ->
         """
         render:
           default_output_preset: master_1080p24
+          image_endpoint:
+            base_url: http://image-render.internal
         agents:
           max_parallel_proposals: 4
         """,
@@ -102,6 +112,12 @@ def test_config_loader_merges_layers_with_expected_precedence(tmp_path: Path) ->
     assert config.adapters.review_provider == "runtime-review"
     assert config.adapters.tts_provider == "kokoro-local"
     assert config.render.default_output_preset == "preview_720p24"
+    assert config.render.image_endpoint.base_url == "http://image-render.internal"
+    assert config.render.image_endpoint.submit_path == "/v1/render/image"
+    assert config.render.image_endpoint.timeout_sec == 20.0
+    assert config.render.wan_endpoint.base_url == "http://wan-default.internal"
+    assert config.render.wan_endpoint.submit_path == "/v1/render/video"
+    assert config.render.wan_endpoint.timeout_sec == 90.0
     assert config.audio.narrator_voice_id == "narrator.zh_runtime"
     assert config.audio.subtitle_source_mode == "tts_segments"
     assert config.audio.default_speech_rate == 0.95
@@ -125,6 +141,14 @@ def test_config_loader_rejects_forbidden_runtime_override(tmp_path: Path) -> Non
         render:
           default_output_preset: preview_720p24
           allow_wan_for_dynamic: true
+          image_endpoint:
+            base_url: http://image-default.internal
+            submit_path: /v1/render/image
+            timeout_sec: 20.0
+          wan_endpoint:
+            base_url: http://wan-default.internal
+            submit_path: /v1/render/video
+            timeout_sec: 90.0
         audio:
           narrator_voice_id: narrator.zh_default
           subtitle_source_mode: tts_durations
@@ -163,6 +187,14 @@ def test_config_loader_rejects_invalid_module_schema(tmp_path: Path) -> None:
         render:
           default_output_preset: preview_720p24
           allow_wan_for_dynamic: true
+          image_endpoint:
+            base_url: http://image-default.internal
+            submit_path: /v1/render/image
+            timeout_sec: 20.0
+          wan_endpoint:
+            base_url: http://wan-default.internal
+            submit_path: /v1/render/video
+            timeout_sec: 90.0
         audio:
           narrator_voice_id: narrator.zh_default
           subtitle_source_mode: tts_durations

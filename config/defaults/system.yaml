@@ -11,6 +11,14 @@ adapters:
 render:
   default_output_preset: preview_720p24
   allow_wan_for_dynamic: true
+  image_endpoint:
+    base_url: http://av-image-renderer:8091
+    submit_path: /v1/render/image
+    timeout_sec: 20.0
+  wan_endpoint:
+    base_url: http://av-wan-renderer:8092
+    submit_path: /v1/render/video
+    timeout_sec: 120.0
 audio:
   narrator_voice_id: narrator.zh_default
   subtitle_source_mode: tts_durations
